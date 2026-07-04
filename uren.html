@@ -170,17 +170,26 @@ const WERKZAAMHEDEN = [
   'Demontage','Transport','Laden/lossen','Kleine werken',
   'Onderhoud','Vergaderen','Service'
 ];
+const ALGEMEEN_WERK = ['Administratie'];
 const AFWEZIGHEID = ['Ziek','Tandarts','Dokter','Vrij'];
+const GEEN_PROJECT_TYPES = [...ALGEMEEN_WERK, ...AFWEZIGHEID];
 
 function vulTypeSelecten(){
   const opties =
     `<optgroup label="Werkzaamheden">${WERKZAAMHEDEN.map(w=>`<option value="${w}">${w}</option>`).join('')}</optgroup>` +
+    `<optgroup label="Algemeen (geen project)">${ALGEMEEN_WERK.map(w=>`<option value="${w}">${w}</option>`).join('')}</optgroup>` +
     `<optgroup label="Afwezigheid">${AFWEZIGHEID.map(w=>`<option value="${w}">${w}</option>`).join('')}</optgroup>`;
   ['timer-type','uren-type'].forEach(id=>{
     document.getElementById(id).innerHTML = opties;
   });
 }
 vulTypeSelecten();
+document.getElementById('timer-type').addEventListener('change', (e)=>{
+  if(GEEN_PROJECT_TYPES.includes(e.target.value)) document.getElementById('timer-project').value = GEEN_PROJECT;
+});
+document.getElementById('uren-type').addEventListener('change', (e)=>{
+  if(GEEN_PROJECT_TYPES.includes(e.target.value)) document.getElementById('uren-project').value = GEEN_PROJECT;
+});
 let huidigeNaam = '';
 let projecten = [];
 let projectenUnsub = null;
