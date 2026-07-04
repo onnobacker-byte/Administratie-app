@@ -99,11 +99,7 @@
       </div>
       <div class="field">
         <label>Type werk</label>
-        <select id="timer-type">
-          <option value="Voorbereiding">Voorbereiding</option>
-          <option value="Montage">Montage</option>
-          <option value="Overig">Overig</option>
-        </select>
+        <select id="timer-type"></select>
       </div>
       <div id="timer-running" style="display:none;">
         <div class="timer-clock" id="timer-clock">00:00:00</div>
@@ -125,11 +121,7 @@
           <div class="field"><label>Datum</label><input type="date" id="uren-datum" required></div>
           <div class="field">
             <label>Type werk</label>
-            <select id="uren-type">
-              <option value="Voorbereiding">Voorbereiding</option>
-              <option value="Montage">Montage</option>
-              <option value="Overig">Overig</option>
-            </select>
+            <select id="uren-type"></select>
           </div>
         </div>
         <div class="field-row">
@@ -169,6 +161,26 @@ const db = firebase.firestore();
 const WERKNEMER_EMAIL_DOMEIN = 'werknemer.intern';
 
 let huidigeUid = null;
+
+const GEEN_PROJECT = 'V0000';
+const WERKZAAMHEDEN = [
+  'Werkopnemen','Offerte maken','Tekenwerk','Reistijd',
+  'Voorbereiding timmeren','Opbouw timmeren',
+  'Voorbereiding schilderen','Opbouw schilderen',
+  'Demontage','Transport','Laden/lossen','Kleine werken',
+  'Onderhoud','Vergaderen','Service'
+];
+const AFWEZIGHEID = ['Ziek','Tandarts','Dokter','Vrij'];
+
+function vulTypeSelecten(){
+  const opties =
+    `<optgroup label="Werkzaamheden">${WERKZAAMHEDEN.map(w=>`<option value="${w}">${w}</option>`).join('')}</optgroup>` +
+    `<optgroup label="Afwezigheid">${AFWEZIGHEID.map(w=>`<option value="${w}">${w}</option>`).join('')}</optgroup>`;
+  ['timer-type','uren-type'].forEach(id=>{
+    document.getElementById(id).innerHTML = opties;
+  });
+}
+vulTypeSelecten();
 let huidigeNaam = '';
 let projecten = [];
 let projectenUnsub = null;
@@ -250,9 +262,8 @@ auth.onAuthStateChanged(async (user)=>{
 
   projectenUnsub = db.collection('projecten').onSnapshot(snap=>{
     projecten = snap.docs.map(d=>d.data()).filter(p=> !['Afgerond','Geannuleerd'].includes(p.status));
-    const opties = projecten.length
-      ? projecten.map(p=> `<option value="${esc(p.id)}">${esc(p.id)} - ${esc(p.omschrijving||'')}</option>`).join('')
-      : '<option value="">Geen actieve projecten</option>';
+    const projectOpties = projecten.map(p=> `<option value="${esc(p.id)}">${esc(p.id)} - ${esc(p.omschrijving||'')}</option>`).join('');
+    const opties = projectOpties + `<option value="${GEEN_PROJECT}">Geen project (verlof / ziek / afspraak)</option>`;
     ['uren-project','timer-project'].forEach(id=>{
       const select = document.getElementById(id);
       const huidig = select.value;
@@ -278,10 +289,11 @@ function renderRegistraties(lijst){
   if(!lijst.length){ el.innerHTML = '<div class="empty">Nog geen registraties</div>'; return; }
   el.innerHTML = lijst.map(r=>{
     const project = projecten.find(p=>p.id===r.projectId);
+    const omschrijving = r.projectId===GEEN_PROJECT ? 'Geen project' : (project? project.omschrijving : '');
     return `
       <div class="entry">
         <div>
-          <span class="tag">${esc(r.projectId)}</span> ${esc(project? project.omschrijving : '')}
+          <span class="tag">${esc(r.projectId)}</span> ${esc(omschrijving)}
           <div class="meta">${fmtDatumKort(r.datum)} &middot; ${esc(r.type)} &middot; ${esc(r.startTijd)}&ndash;${esc(r.eindTijd)}${r.opmerking? ' &middot; '+esc(r.opmerking) : ''}</div>
         </div>
         <div>
