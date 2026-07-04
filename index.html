@@ -224,6 +224,7 @@
     <div class="nav-item" data-view="facturen"><span class="dot"></span>Facturen</div>
     <div class="nav-item" data-view="instellingen"><span class="dot"></span>Instellingen</div>
     <div class="nav-item" data-view="werknemers"><span class="dot"></span>Werknemers</div>
+    <div class="nav-item" data-view="uren"><span class="dot"></span>Uren</div>
     <div class="nav-item" data-view="backup"><span class="dot"></span>Back-up</div>
     <div id="nav-vergrendel" class="nav-item" style="margin-top:auto; display:none;"><span class="dot"></span>🔒 Vergrendelen</div>
   </aside>
@@ -528,6 +529,8 @@ function render(){
   else if(currentView === 'factuur-detail') main.innerHTML = viewFactuurDetail(currentParams.id);
   else if(currentView === 'instellingen') main.innerHTML = viewInstellingen();
   else if(currentView === 'werknemers') main.innerHTML = viewWerknemers();
+  else if(currentView === 'uren') main.innerHTML = viewUren();
+  else if(currentView === 'uren') main.innerHTML = viewUren();
   else if(currentView === 'backup') main.innerHTML = viewBackup();
   attachViewHandlers();
   toonVergrendelknopIndienNodig();
@@ -1690,6 +1693,17 @@ function attachViewHandlers(){
     });
   }
 
+  if(currentView === 'uren'){
+    document.getElementById('uren-werknemer-filter').addEventListener('change', (e)=>{
+      urenWerknemerFilter = e.target.value;
+      render();
+    });
+    document.getElementById('uren-afwezig-filter').addEventListener('change', (e)=>{
+      urenAlleenAfwezigheid = e.target.checked;
+      render();
+    });
+  }
+
   if(currentView === 'backup'){
     document.getElementById('btn-backup-download').addEventListener('click', ()=>{
       exporteerBackup();
@@ -2235,6 +2249,69 @@ async function maakWerknemerAccount(naam, wachtwoord){
   await db.collection('werknemers').doc(uid).set({naam, email, rol:'werknemer', actief:true});
   await secondaryAuth.signOut();
   return uid;
+}
+
+/* ===================== UREN (overzicht) ===================== */
+const GEEN_PROJECT_ID = 'V0000';
+let urenWerknemerFilter = '';
+let urenAlleenAfwezigheid = false;
+
+function viewUren(){
+  const werknemers = [...state.werknemers].sort((a,b)=>(a.naam||'').localeCompare(b.naam||''));
+  let lijst = [...state.urenregistraties].sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''));
+  if(urenWerknemerFilter) lijst = lijst.filter(u=>u.werknemerId===urenWerknemerFilter);
+  if(urenAlleenAfwezigheid) lijst = lijst.filter(u=>u.projectId===GEEN_PROJECT_ID);
+
+  const totaalUren = som(lijst.map(u=>u.uren));
+  const afwezigUren = som(state.urenregistraties.filter(u=> (!urenWerknemerFilter || u.werknemerId===urenWerknemerFilter) && u.projectId===GEEN_PROJECT_ID).map(u=>u.uren));
+
+  return `
+    <h1 class="page-title">Uren</h1>
+    <p class="page-sub">Alle geregistreerde uren van werknemers, inclusief verlof, ziekte en afspraken</p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">Totaal uren (huidige selectie)</div>
+        <div class="value">${totaalUren.toFixed(2)} u</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Waarvan verlof / ziekte / afspraak</div>
+        <div class="value">${afwezigUren.toFixed(2)} u</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <select id="uren-werknemer-filter" class="btn btn-sm" style="border-radius:6px;">
+        <option value="">Alle werknemers</option>
+        ${werknemers.map(w=>`<option value="${w.uid}" ${w.uid===urenWerknemerFilter?'selected':''}>${esc(w.naam)}</option>`).join('')}
+      </select>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13.5px; color:var(--text-muted);">
+        <input type="checkbox" id="uren-afwezig-filter" ${urenAlleenAfwezigheid?'checked':''}>
+        Alleen verlof/ziekte/afspraak
+      </label>
+    </div>
+
+    <div class="panel">
+      <table>
+        <thead><tr><th>Datum</th><th>Werknemer</th><th>Project</th><th>Type</th><th>Tijd</th><th style="text-align:right;">Uren</th><th>Opmerking</th></tr></thead>
+        <tbody>
+          ${lijst.length ? lijst.map(u=>{
+            const project = projectById(u.projectId);
+            const isAfwezig = u.projectId === GEEN_PROJECT_ID;
+            return `<tr>
+              <td>${fmtDate(u.datum)}</td>
+              <td>${esc(u.werknemerNaam||'-')}</td>
+              <td>${isAfwezig ? `<span class="tag-nummer" style="background:var(--rust-bg); color:var(--rust);">${GEEN_PROJECT_ID}</span>` : (project? `<span class="tag-nummer">${project.id}</span> ${esc(project.omschrijving||'')}` : esc(u.projectId||'-'))}</td>
+              <td>${esc(u.type||'-')}</td>
+              <td>${esc(u.startTijd||'')}&ndash;${esc(u.eindTijd||'')}</td>
+              <td style="text-align:right;">${u.uren} u</td>
+              <td>${esc(u.opmerking||'')}</td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="title">Nog geen uren geregistreerd</div>Zodra werknemers uren invoeren via de urenregistratie-app, verschijnen die hier.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 /* ===================== BACK-UP & HERSTEL ===================== */
