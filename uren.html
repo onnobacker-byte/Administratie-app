@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Urenregistratie</title>
+<link rel="manifest" href="uren-manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Urenregistratie">
+<meta name="theme-color" content="#F0EBDD">
+<style>
+  :root{
+    --bg:#F7F5F0; --panel:#FFFFFF; --sidebar-bg:#F0EBDD;
+    --copper:#B06B34; --copper-dark:#8A5127; --copper-bg:#F3E3CE;
+    --sage:#5E7350; --sage-bg:#E3E9DA;
+    --rust:#9C4530; --rust-bg:#F2E0D8;
+    --amber:#B4832E; --amber-bg:#F4E9D2;
+    --tag-bg:#EEE1C6; --tag-text:#7A4E1E;
+    --text:#2A2118; --text-muted:#7A6C58; --border:#E3DAC5;
+    --font: Arial, Helvetica, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:var(--font); background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased;}
+  header{background:var(--sidebar-bg); border-bottom:1px solid var(--border); padding:16px 20px; display:flex; justify-content:space-between; align-items:center;}
+  header h1{font-size:17px; margin:0; font-weight:700;}
+  header .sub{font-size:12px; color:var(--text-muted);}
+  main{max-width:640px; margin:0 auto; padding:20px 16px 60px;}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:18px;}
+  h2{font-size:15px; font-weight:700; margin:0 0 14px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12.5px; font-weight:600; color:var(--text-muted); margin-bottom:5px;}
+  .field input, .field select, .field textarea{
+    width:100%; border:1px solid var(--border); border-radius:6px; padding:11px; font-size:15px;
+    font-family:var(--font); color:var(--text); background:#fff;
+  }
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .btn{
+    border:1px solid var(--border); background:var(--panel); color:var(--text);
+    padding:12px 18px; border-radius:8px; font-size:14.5px; font-weight:600; cursor:pointer; width:100%;
+  }
+  .btn-primary{background:var(--copper); border-color:var(--copper); color:#fff;}
+  .btn-ghost{background:none; border:none; color:var(--rust); font-size:13px; width:auto; padding:4px 8px;}
+  .tag{display:inline-flex; align-items:center; font-family:monospace; font-size:11px; font-weight:700; background:var(--tag-bg); color:var(--tag-text); padding:2px 8px; border-radius:2px 8px 8px 2px;}
+  .entry{border-bottom:1px solid var(--border); padding:12px 0; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .entry:last-child{border-bottom:none;}
+  .entry .meta{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
+  .entry .uren{font-weight:700; white-space:nowrap;}
+  .empty{color:var(--text-muted); font-size:13.5px; text-align:center; padding:20px 0;}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(8px);
+    background:var(--panel); border:1px solid var(--border); color:var(--text); padding:11px 18px;
+    border-radius:8px; font-size:13.5px; box-shadow:0 6px 20px rgba(0,0,0,0.12); opacity:0; transition:opacity .2s, transform .2s; z-index:300;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #login-screen{position:fixed; inset:0; background:var(--bg); z-index:500; display:flex; align-items:center; justify-content:center; padding:20px;}
+  #login-screen .box{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:30px 26px; width:100%; max-width:340px;}
+  #login-screen h2{text-align:center; margin-bottom:18px;}
+  #login-screen .icon{font-size:26px; text-align:center; margin-bottom:8px;}
+  .error{color:var(--rust); font-size:13px; min-height:16px; margin-bottom:6px;}
+  #app{display:none;}
+  .btn-uitloggen{background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="box">
+    <div class="icon">🕒</div>
+    <h2>Urenregistratie</h2>
+    <form id="login-form">
+      <div class="field"><label>Naam</label><input type="text" id="login-naam" placeholder="Je naam" autocomplete="username"></div>
+      <div class="field"><label>Wachtwoord</label><input type="password" id="login-wachtwoord" placeholder="Wachtwoord" autocomplete="current-password"></div>
+      <div class="error" id="login-error"></div>
+      <button type="submit" class="btn btn-primary">Inloggen</button>
+    </form>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div>
+      <h1 id="header-naam">Urenregistratie</h1>
+      <div class="sub" id="header-sub"></div>
+    </div>
+    <button class="btn-uitloggen" id="btn-uitloggen">Uitloggen</button>
+  </header>
+  <main>
+    <div class="panel">
+      <h2>Uren registreren</h2>
+      <form id="uren-form">
+        <div class="field">
+          <label>Project</label>
+          <select id="uren-project" required></select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Datum</label><input type="date" id="uren-datum" required></div>
+          <div class="field">
+            <label>Type werk</label>
+            <select id="uren-type">
+              <option value="Voorbereiding">Voorbereiding</option>
+              <option value="Montage">Montage</option>
+              <option value="Overig">Overig</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Starttijd</label><input type="time" id="uren-start" required></div>
+          <div class="field"><label>Eindtijd</label><input type="time" id="uren-eind" required></div>
+        </div>
+        <div class="field"><label>Opmerking (optioneel)</label><textarea id="uren-opmerking" rows="2"></textarea></div>
+        <div class="error" id="uren-form-error"></div>
+        <button type="submit" class="btn btn-primary">Registreren</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Mijn registraties (laatste 20)</h2>
+      <div id="registraties-lijst"><div class="empty">Nog geen registraties</div></div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC-tTAkasaN6s0D_tid9aTFMkT4bLy4FN8",
+  authDomain: "adminstratie-programma.firebaseapp.com",
+  projectId: "adminstratie-programma",
+  storageBucket: "adminstratie-programma.firebasestorage.app",
+  messagingSenderId: "629306542799",
+  appId: "1:629306542799:web:ae49e2e36b7deaa5d6c5ba"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const WERKNEMER_EMAIL_DOMEIN = 'werknemer.intern';
+
+let huidigeUid = null;
+let huidigeNaam = '';
+let projecten = [];
+let projectenUnsub = null;
+let registratiesUnsub = null;
+
+function werknemerEmail(naam){
+  const slug = naam.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'.').replace(/^\.+|\.+$/g,'');
+  return `${slug}@${WERKNEMER_EMAIL_DOMEIN}`;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2200);
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDatumKort(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+function berekenUren(start, eind){
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = eind.split(':').map(Number);
+  let minuten = (eh*60+em) - (sh*60+sm);
+  if(minuten < 0) minuten += 24*60; // over middernacht heen, uitzondering
+  return +(minuten/60).toFixed(2);
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const naam = document.getElementById('login-naam').value.trim();
+  const wachtwoord = document.getElementById('login-wachtwoord').value;
+  if(!naam || !wachtwoord){ document.getElementById('login-error').textContent = 'Vul naam en wachtwoord in'; return; }
+  try{
+    await auth.signInWithEmailAndPassword(werknemerEmail(naam), wachtwoord);
+  }catch(err){
+    document.getElementById('login-error').textContent = 'Inloggen mislukt: controleer naam en wachtwoord';
+  }
+});
+
+document.getElementById('btn-uitloggen').addEventListener('click', ()=> auth.signOut());
+
+auth.onAuthStateChanged(async (user)=>{
+  if(projectenUnsub){ projectenUnsub(); projectenUnsub = null; }
+  if(registratiesUnsub){ registratiesUnsub(); registratiesUnsub = null; }
+  if(!user){
+    huidigeUid = null;
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    return;
+  }
+  let werknemerDoc;
+  try{
+    werknemerDoc = await db.collection('werknemers').doc(user.uid).get();
+  }catch(e){
+    document.getElementById('login-error').textContent = 'Kon accountgegevens niet ophalen';
+    auth.signOut();
+    return;
+  }
+  if(!werknemerDoc.exists){
+    document.getElementById('login-error').textContent = 'Dit account is niet bekend, vraag de beheerder om toegang';
+    auth.signOut();
+    return;
+  }
+  if(werknemerDoc.data().actief === false){
+    document.getElementById('login-error').textContent = 'Dit account is gedeactiveerd';
+    auth.signOut();
+    return;
+  }
+  huidigeUid = user.uid;
+  huidigeNaam = werknemerDoc.data().naam || '';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('header-naam').textContent = `Hoi ${huidigeNaam}`;
+  document.getElementById('header-sub').textContent = 'Urenregistratie';
+  document.getElementById('uren-datum').value = todayISO();
+
+  projectenUnsub = db.collection('projecten').onSnapshot(snap=>{
+    projecten = snap.docs.map(d=>d.data()).filter(p=> !['Afgerond','Geannuleerd'].includes(p.status));
+    const select = document.getElementById('uren-project');
+    const huidig = select.value;
+    select.innerHTML = projecten.length
+      ? projecten.map(p=> `<option value="${esc(p.id)}">${esc(p.id)} - ${esc(p.omschrijving||'')}</option>`).join('')
+      : '<option value="">Geen actieve projecten</option>';
+    if(huidig) select.value = huidig;
+  }, err=> console.error(err));
+
+  registratiesUnsub = db.collection('urenregistraties')
+    .where('werknemerId','==', user.uid)
+    .onSnapshot(snap=>{
+      const lijst = snap.docs.map(d=>({id:d.id, ...d.data()}))
+        .sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''))
+        .slice(0,20);
+      renderRegistraties(lijst);
+    }, err=> console.error(err));
+});
+
+function renderRegistraties(lijst){
+  const el = document.getElementById('registraties-lijst');
+  if(!lijst.length){ el.innerHTML = '<div class="empty">Nog geen registraties</div>'; return; }
+  el.innerHTML = lijst.map(r=>{
+    const project = projecten.find(p=>p.id===r.projectId);
+    return `
+      <div class="entry">
+        <div>
+          <span class="tag">${esc(r.projectId)}</span> ${esc(project? project.omschrijving : '')}
+          <div class="meta">${fmtDatumKort(r.datum)} &middot; ${esc(r.type)} &middot; ${esc(r.startTijd)}&ndash;${esc(r.eindTijd)}${r.opmerking? ' &middot; '+esc(r.opmerking) : ''}</div>
+        </div>
+        <div>
+          <div class="uren">${r.uren} u</div>
+          <button class="btn btn-ghost" data-verwijder="${r.id}">Verwijderen</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  el.querySelectorAll('[data-verwijder]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Deze registratie verwijderen?')) return;
+      try{ await db.collection('urenregistraties').doc(btn.dataset.verwijder).delete(); }
+      catch(e){ toast('Verwijderen mislukt: ' + e.message); }
+    });
+  });
+}
+
+document.getElementById('uren-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const projectId = document.getElementById('uren-project').value;
+  const datum = document.getElementById('uren-datum').value;
+  const type = document.getElementById('uren-type').value;
+  const start = document.getElementById('uren-start').value;
+  const eind = document.getElementById('uren-eind').value;
+  const opmerking = document.getElementById('uren-opmerking').value.trim();
+  const foutEl = document.getElementById('uren-form-error');
+  foutEl.textContent = '';
+  if(!projectId){ foutEl.textContent = 'Kies een project'; return; }
+  if(!datum || !start || !eind){ foutEl.textContent = 'Vul datum, starttijd en eindtijd in'; return; }
+  const uren = berekenUren(start, eind);
+  if(uren <= 0){ foutEl.textContent = 'Eindtijd moet na starttijd liggen'; return; }
+  try{
+    await db.collection('urenregistraties').add({
+      werknemerId: huidigeUid,
+      werknemerNaam: huidigeNaam,
+      projectId, datum, type, startTijd:start, eindTijd:eind, uren, opmerking,
+      aangemaaktOp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('Uren geregistreerd');
+    document.getElementById('uren-opmerking').value = '';
+    document.getElementById('uren-start').value = '';
+    document.getElementById('uren-eind').value = '';
+  }catch(err){
+    foutEl.textContent = 'Registreren mislukt: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
