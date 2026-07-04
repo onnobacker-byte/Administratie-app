@@ -61,6 +61,10 @@
   .error{color:var(--rust); font-size:13px; min-height:16px; margin-bottom:6px;}
   #app{display:none;}
   .btn-uitloggen{background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; text-decoration:underline;}
+.timer-clock{font-family:monospace; font-size:38px; font-weight:700; text-align:center; margin:6px 0 4px; letter-spacing:1px;}
+.timer-sinds{text-align:center; font-size:12.5px; color:var(--text-muted); margin-bottom:14px;}
+.btn-stop{background:var(--rust-bg); border-color:var(--rust); color:var(--rust);}
+.section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 14px;}
 </style>
 </head>
 <body>
@@ -87,8 +91,31 @@
     <button class="btn-uitloggen" id="btn-uitloggen">Uitloggen</button>
   </header>
   <main>
+    <div class="panel" id="timer-panel">
+      <h2>Tijd klokken</h2>
+      <div class="field">
+        <label>Project</label>
+        <select id="timer-project" required></select>
+      </div>
+      <div class="field">
+        <label>Type werk</label>
+        <select id="timer-type">
+          <option value="Voorbereiding">Voorbereiding</option>
+          <option value="Montage">Montage</option>
+          <option value="Overig">Overig</option>
+        </select>
+      </div>
+      <div id="timer-running" style="display:none;">
+        <div class="timer-clock" id="timer-clock">00:00:00</div>
+        <div class="timer-sinds" id="timer-sinds"></div>
+      </div>
+      <div class="error" id="timer-error"></div>
+      <button class="btn btn-primary" id="btn-timer-start">Start</button>
+      <button class="btn btn-stop" id="btn-timer-stop" style="display:none;">Stop &amp; registreren</button>
+    </div>
+
     <div class="panel">
-      <h2>Uren registreren</h2>
+      <p class="section-label">Of handmatig invoeren</p>
       <form id="uren-form">
         <div class="field">
           <label>Project</label>
@@ -190,6 +217,7 @@ auth.onAuthStateChanged(async (user)=>{
   if(registratiesUnsub){ registratiesUnsub(); registratiesUnsub = null; }
   if(!user){
     huidigeUid = null;
+    if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
     return;
@@ -222,13 +250,18 @@ auth.onAuthStateChanged(async (user)=>{
 
   projectenUnsub = db.collection('projecten').onSnapshot(snap=>{
     projecten = snap.docs.map(d=>d.data()).filter(p=> !['Afgerond','Geannuleerd'].includes(p.status));
-    const select = document.getElementById('uren-project');
-    const huidig = select.value;
-    select.innerHTML = projecten.length
+    const opties = projecten.length
       ? projecten.map(p=> `<option value="${esc(p.id)}">${esc(p.id)} - ${esc(p.omschrijving||'')}</option>`).join('')
       : '<option value="">Geen actieve projecten</option>';
-    if(huidig) select.value = huidig;
+    ['uren-project','timer-project'].forEach(id=>{
+      const select = document.getElementById(id);
+      const huidig = select.value;
+      select.innerHTML = opties;
+      if(huidig) select.value = huidig;
+    });
   }, err=> console.error(err));
+
+  herstelTimer();
 
   registratiesUnsub = db.collection('urenregistraties')
     .where('werknemerId','==', user.uid)
@@ -292,6 +325,97 @@ document.getElementById('uren-form').addEventListener('submit', async (e)=>{
     document.getElementById('uren-opmerking').value = '';
     document.getElementById('uren-start').value = '';
     document.getElementById('uren-eind').value = '';
+  }catch(err){
+    foutEl.textContent = 'Registreren mislukt: ' + err.message;
+  }
+});
+
+/* ===================== TIJD KLOKKEN (start/stop) ===================== */
+let timerInterval = null;
+let timerState = null; // {projectId, type, startMs}
+
+function timerKey(){ return 'actieveTimer_' + huidigeUid; }
+function laadTimerState(){
+  try{
+    const raw = localStorage.getItem(timerKey());
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function bewaarTimerState(state){
+  try{
+    if(state) localStorage.setItem(timerKey(), JSON.stringify(state));
+    else localStorage.removeItem(timerKey());
+  }catch(e){ /* geen probleem als lokale opslag hier faalt */ }
+}
+function formatDuur(ms){
+  const totaalSec = Math.max(0, Math.floor(ms/1000));
+  const u = Math.floor(totaalSec/3600);
+  const m = Math.floor((totaalSec%3600)/60);
+  const s = totaalSec%60;
+  return [u,m,s].map(n=> String(n).padStart(2,'0')).join(':');
+}
+function updateTimerKlok(){
+  if(!timerState) return;
+  document.getElementById('timer-clock').textContent = formatDuur(Date.now() - timerState.startMs);
+}
+function updateTimerUI(){
+  const running = !!timerState;
+  document.getElementById('timer-running').style.display = running ? 'block' : 'none';
+  document.getElementById('btn-timer-start').style.display = running ? 'none' : 'block';
+  document.getElementById('btn-timer-stop').style.display = running ? 'block' : 'none';
+  document.getElementById('timer-project').disabled = running;
+  document.getElementById('timer-type').disabled = running;
+  if(running){
+    const project = projecten.find(p=>p.id===timerState.projectId);
+    document.getElementById('timer-sinds').textContent = `${project? project.id + ' - ' + (project.omschrijving||'') : timerState.projectId} · gestart om ${new Date(timerState.startMs).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
+    document.getElementById('timer-project').value = timerState.projectId;
+    document.getElementById('timer-type').value = timerState.type;
+    updateTimerKlok();
+    if(!timerInterval) timerInterval = setInterval(updateTimerKlok, 1000);
+  } else if(timerInterval){
+    clearInterval(timerInterval); timerInterval = null;
+  }
+}
+function herstelTimer(){
+  timerState = laadTimerState();
+  updateTimerUI();
+}
+
+document.getElementById('btn-timer-start').addEventListener('click', ()=>{
+  const foutEl = document.getElementById('timer-error');
+  foutEl.textContent = '';
+  const projectId = document.getElementById('timer-project').value;
+  if(!projectId){ foutEl.textContent = 'Kies eerst een project'; return; }
+  const type = document.getElementById('timer-type').value;
+  timerState = { projectId, type, startMs: Date.now() };
+  bewaarTimerState(timerState);
+  updateTimerUI();
+});
+
+document.getElementById('btn-timer-stop').addEventListener('click', async ()=>{
+  if(!timerState) return;
+  const foutEl = document.getElementById('timer-error');
+  const startDate = new Date(timerState.startMs);
+  const eindDate = new Date();
+  const datum = startDate.toISOString().slice(0,10);
+  const startTijd = startDate.toTimeString().slice(0,5);
+  const eindTijd = eindDate.toTimeString().slice(0,5);
+  const uren = +(((eindDate - startDate)/3600000)).toFixed(2);
+  const opgeslagenState = timerState;
+  try{
+    await db.collection('urenregistraties').add({
+      werknemerId: huidigeUid,
+      werknemerNaam: huidigeNaam,
+      projectId: opgeslagenState.projectId,
+      datum, type: opgeslagenState.type, startTijd, eindTijd,
+      uren: uren > 0 ? uren : 0.01,
+      opmerking: '',
+      aangemaaktOp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast(`${uren > 0 ? uren : 0.01} u geregistreerd`);
+    timerState = null;
+    bewaarTimerState(null);
+    updateTimerUI();
   }catch(err){
     foutEl.textContent = 'Registreren mislukt: ' + err.message;
   }
