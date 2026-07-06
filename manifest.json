@@ -3,7 +3,7 @@
   "short_name": "Administratie",
   "description": "Klanten, projecten, begrotingen, offertes en facturen",
   "start_url": "./index.html",
-  "scope": "./",
+  "scope": "./index.html",
   "display": "standalone",
   "background_color": "#F7F5F0",
   "theme_color": "#F0EBDD",

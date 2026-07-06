@@ -3,7 +3,7 @@
   "short_name": "Uren",
   "description": "Uren registreren per project",
   "start_url": "./uren.html",
-  "scope": "./",
+  "scope": "./uren.html",
   "display": "standalone",
   "background_color": "#F7F5F0",
   "theme_color": "#F0EBDD",
