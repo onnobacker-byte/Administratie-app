@@ -834,6 +834,7 @@ function viewProjectDetail(id){
           ${PROJECT_STATUS.map(s=>`<option value="${s}" ${s===p.status?'selected':''}>${s}</option>`).join('')}
         </select>
         <button class="btn btn-sm" id="btn-export-excel">Exporteer naar Excel</button>
+        <button class="btn btn-sm" id="btn-export-voorblad">Voorblad (Word)</button>
       </div>
     </div>
 
@@ -1407,6 +1408,9 @@ function attachViewHandlers(){
     document.getElementById('btn-export-excel').addEventListener('click', ()=>{
       leesAlleOnderdelenUitDOM(p);
       exporteerBegrotingNaarExcel(p);
+    });
+    document.getElementById('btn-export-voorblad').addEventListener('click', ()=>{
+      exporteerVoorbladNaarWord(p);
     });
 
     const maakOfferteBtn = document.getElementById('btn-maak-offerte');
@@ -2311,6 +2315,62 @@ async function exporteerFactuurNaarWord(f){
   if(footer) xml += footer;
 
   await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64});
+}
+
+async function exporteerVoorbladNaarWord(p){
+  const k = klantById(p.klantId);
+  const i = state.instellingen;
+  const gekoppeldeOffertes = state.offertes.filter(o=>o.projectId===p.id).sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+  const laatsteOfferte = gekoppeldeOffertes[gekoppeldeOffertes.length-1];
+  const behandelaar = (laatsteOfferte && laatsteOfferte.behandelaar) || i.ondertekenaar || '';
+  const klantkenmerk = (laatsteOfferte && laatsteOfferte.uwKenmerk) || '';
+  const gekoppeldeFacturen = state.facturen.filter(f=>f.projectId===p.id);
+  const voorschotFactuur = gekoppeldeFacturen.find(f=>f.type==='voorschot');
+  const eindFactuur = gekoppeldeFacturen.find(f=>f.type==='eind') || gekoppeldeFacturen.find(f=>f.type==='standaard');
+
+  const logo = await logoXmlEnInfo();
+  let xml = logo.xml || bedrijfsHeaderTekstXml();
+  xml += wPara({text:'', after:160});
+  xml += wPara({text:'Voorblad', size:20, align:'center', after:0});
+  xml += wPara({text: p.id, bold:true, size:56, align:'center', after:300});
+
+  xml += klantAanhefXml(k);
+  xml += wKenmerkenXml([
+    ['Klantkenmerk', klantkenmerk],
+    ['Behandeld door', behandelaar],
+    ['Omschrijving', p.omschrijving || ''],
+    ['Startdatum', fmtDate(p.startdatum)],
+    ['Status', p.status || ''],
+  ]);
+  xml += wPara({text:'', after:200});
+
+  xml += wPara({text:'Voortgang', bold:true, size:22, after:120});
+  const checklist = [
+    ['Aanvraag', fmtDate(p.startdatum)],
+    ['Offreren', laatsteOfferte? laatsteOfferte.id : ''],
+    ['Opvolgen', ''],
+    ['Bevestigen', ''],
+    ['Voorbereiden', ''],
+    ['Materiaal bestellen', ''],
+    ['Materiaal ontvangen', ''],
+    ['Montage', ''],
+    ['Nacalculeren', ''],
+  ];
+  checklist.forEach(([label, waarde])=>{
+    const vinkje = waarde ? '☑' : '☐';
+    xml += wPara({text:`${vinkje}  ${label}${waarde? '  —  '+waarde : ''}`, size:20, after:80});
+  });
+
+  xml += wPara({text:'', after:120});
+  xml += wPara({text:'Facturatie', bold:true, size:22, after:120});
+  xml += wPara({text:`${voorschotFactuur? '☑':'☐'}  Voorschotfactuur${voorschotFactuur? '  —  nr. '+voorschotFactuur.id+(voorschotFactuur.status==='Betaald'? ' (betaald)':' (nog niet betaald)') : ''}`, size:20, after:80});
+  xml += wPara({text:`${eindFactuur? '☑':'☐'}  Eindfactuur${eindFactuur? '  —  nr. '+eindFactuur.id+(eindFactuur.status==='Betaald'? ' (betaald)':' (nog niet betaald)') : ''}`, size:20, after:80});
+  xml += wPara({text:'☐  Resultaat / afgerond', size:20, after:280});
+
+  const footer = footerRegelXml();
+  if(footer) xml += footer;
+
+  await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64});
 }
 
 /* ===================== WERKNEMERS ===================== */
