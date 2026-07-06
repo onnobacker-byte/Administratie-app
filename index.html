@@ -337,6 +337,14 @@ function normaliseerState(){
   }
   if(state.instellingen.ondertekenaar===undefined) state.instellingen.ondertekenaar = '';
   if(state.instellingen.website===undefined) state.instellingen.website = '';
+  if(!state.instellingen.bedrijfsnaam){
+    Object.assign(state.instellingen, {
+      bedrijfsnaam:'Van Aken & Backer Meubelmakerij',
+      adres:'Bellstraat 2e', postcode:'3133 KE', plaats:'Vlaardingen',
+      telefoon:'(010) 512 11 08', email:'info@ab-meubels.com', website:'www.ab-meubels.com',
+      kvk:'83978917', iban:'NL74 RABO 0139.5874.46'
+    });
+  }
   if(state.instellingen.betalingscondities===undefined) state.instellingen.betalingscondities = '60% bij opdracht\n40% bij levering';
   if(state.instellingen.logoBase64===undefined) state.instellingen.logoBase64 = DEFAULT_LOGO_BASE64;
   if(state.instellingen.logoMime===undefined) state.instellingen.logoMime = 'image/jpeg';
@@ -1914,6 +1922,12 @@ function exporteerBegrotingNaarExcel(p){
   ];
   const voorbladWs = XLSX.utils.aoa_to_sheet(voorbladAoa);
   voorbladWs['!cols'] = [{wch:10},{wch:22},{wch:8},{wch:8},{wch:14},{wch:16},{wch:10}];
+  voorbladWs['!pageSetup'] = { paperSize:9, orientation:'portrait', fitToWidth:1, fitToHeight:1, scale:100 };
+  voorbladWs['!margins'] = { left:0.5, right:0.5, top:0.6, bottom:0.6, header:0.3, footer:0.3 };
+  voorbladWs['!fitToPage'] = true;
+  ['A1','F1','H26','A28'].forEach(cellRef=>{
+    if(voorbladWs[cellRef]) voorbladWs[cellRef].s = { font:{ bold:true, sz: cellRef==='F1'||cellRef==='H26'? 20 : 12 } };
+  });
   XLSX.utils.book_append_sheet(wb, voorbladWs, 'Voorblad');
 
   // Kengetallen-blad
@@ -2028,7 +2042,7 @@ function exporteerBegrotingNaarExcel(p){
   XLSX.utils.book_append_sheet(wb, totWs, 'Totaaloverzicht');
   wb.SheetNames = ['Voorblad', 'Totaaloverzicht', ...sheets];
 
-  XLSX.writeFile(wb, `Begroting_${p.id}.xlsx`);
+  XLSX.writeFile(wb, `Begroting_${p.id}.xlsx`, {cellStyles:true});
   showToast('Excel-bestand gedownload');
 }
 
