@@ -1872,6 +1872,30 @@ function exporteerBegrotingNaarExcel(p){
   const i = state.instellingen;
   const wb = XLSX.utils.book_new();
 
+  // Voorblad
+  const voorbladAoa = [
+    [i.bedrijfsnaam || 'Begrotingsstaat'],
+    [],
+    ['Werknummer', p.id],
+    ['Omschrijving', p.omschrijving || ''],
+    ['Status', p.status || ''],
+    ['Startdatum', fmtDate(p.startdatum)],
+    [],
+    ['Opdrachtgever'],
+    ['Naam', k? k.naam : ''],
+    ['Contactpersoon', k? (k.contactpersoon||'') : ''],
+    ['Adres', k? (k.adres||'') : ''],
+    ['Postcode / plaats', k? `${k.postcode||''} ${k.plaats||''}`.trim() : ''],
+    ['Telefoon', k? (k.telefoon||'') : ''],
+    ['E-mail', k? (k.email||'') : ''],
+    ['Klantnummer', k? k.id : ''],
+    [],
+    ['Datum export', fmtDate(todayISO())],
+  ];
+  const voorbladWs = XLSX.utils.aoa_to_sheet(voorbladAoa);
+  voorbladWs['!cols'] = [{wch:20},{wch:36}];
+  XLSX.utils.book_append_sheet(wb, voorbladWs, 'Voorblad');
+
   // Kengetallen-blad
   const keAoa = [
     ['Kengetallen', '', ''],
@@ -1890,8 +1914,9 @@ function exporteerBegrotingNaarExcel(p){
   const KE_BTW = 'Kengetallen!$C$6';
   const KE_KANTOOR = 'Kengetallen!$C$7';
 
-  const gebruikteNamen = new Set(['Kengetallen','Totaaloverzicht']);
+  const gebruikteNamen = new Set(['Voorblad','Kengetallen','Totaaloverzicht']);
   const onderdeelInfo = [];
+
 
   p.begroting.onderdelen.forEach(o=>{
     const naam = sheetNaam(o.naam, gebruikteNamen);
@@ -1979,9 +2004,9 @@ function exporteerBegrotingNaarExcel(p){
     totWs[`C${totRow}`] = {t:'n', f:`SUM(C${firstRow}:C${lastRow})`};
   }
   totWs['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:totRow, c:2}});
-  const sheets = wb.SheetNames.slice();
+  const sheets = wb.SheetNames.slice().filter(n=>n!=='Voorblad');
   XLSX.utils.book_append_sheet(wb, totWs, 'Totaaloverzicht');
-  wb.SheetNames = ['Totaaloverzicht', ...sheets];
+  wb.SheetNames = ['Voorblad', 'Totaaloverzicht', ...sheets];
 
   XLSX.writeFile(wb, `Begroting_${p.id}.xlsx`);
   showToast('Excel-bestand gedownload');
