@@ -364,6 +364,7 @@ function normaliseerState(){
         delete o.regels;
       }
       if(!o.materiaalregels) o.materiaalregels = [];
+      if(o.afmetingen===undefined) o.afmetingen = '';
       if(!o.urenregels) o.urenregels = [];
     });
   });
@@ -483,6 +484,15 @@ function berekenBegroting(begroting){
     inkoop+=b.inkoop; verkoop+=b.verkoop; uren+=b.uren; kantoorkosten+=b.kantoorkosten; excl+=b.aanneemsomExcl; incl+=b.aanneemsomIncl;
   });
   return {inkoop, verkoop, uren, kantoorkosten, excl, incl};
+}
+
+function bouwOnderdeelOmschrijving(o){
+  const regels = [];
+  if(o.afmetingen && o.afmetingen.trim()) regels.push(`Afmetingen: ${o.afmetingen.trim()}`);
+  const materialen = (o.materiaalregels||[]).map(r=>r.omschrijving).filter(m=>m && m.trim());
+  if(materialen.length) regels.push(`Materiaal: ${materialen.join(', ')}`);
+  if(!regels.length) return '';
+  return `${o.naam}\n${regels.map(r=>`- ${r}`).join('\n')}`;
 }
 
 function statusBadge(status, map){
@@ -900,9 +910,13 @@ function onderdeelBlock(o, idx){
   return `
     <div class="panel" style="padding:18px; margin-bottom:16px;" data-onderdeel-id="${o.id}">
       <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; gap:10px;">
-        <div class="field" style="margin-bottom:0; flex:1; max-width:360px;">
+        <div class="field" style="margin-bottom:0; flex:1; max-width:280px;">
           <label>Naam onderdeel</label>
           <input type="text" class="onderdeel-naam" value="${esc(o.naam)}" placeholder="Bijv. kast 1 bijkamer">
+        </div>
+        <div class="field" style="margin-bottom:0; flex:1; max-width:240px;">
+          <label>Afmetingen</label>
+          <input type="text" class="onderdeel-afmetingen" value="${esc(o.afmetingen||'')}" placeholder="Bijv. 890 x 525 x 10 mm">
         </div>
         <button class="btn btn-ghost btn-sm btn-danger" data-del-onderdeel="${o.id}">Onderdeel verwijderen</button>
       </div>
@@ -997,6 +1011,8 @@ function leesAlleOnderdelenUitDOM(p){
     onderdeel.urenregels = gelezen.urenregels;
     const naamInput = block.querySelector('.onderdeel-naam');
     if(naamInput) onderdeel.naam = naamInput.value;
+    const afmetingenInput = block.querySelector('.onderdeel-afmetingen');
+    if(afmetingenInput) onderdeel.afmetingen = afmetingenInput.value;
   });
 }
 
@@ -1065,6 +1081,11 @@ function viewOfferteDetail(id){
     <div class="field-row" style="max-width:420px; margin:0 0 18px;">
       <div class="field"><label>Uw kenmerk (klantreferentie)</label><input type="text" id="offerte-uwkenmerk" value="${esc(o.uwKenmerk||'')}"></div>
       <div class="field"><label>Behandeld door</label><input type="text" id="offerte-behandelaar" value="${esc(o.behandelaar || state.instellingen.ondertekenaar || '')}"></div>
+    </div>
+
+    <div class="field" style="max-width:640px; margin-bottom:18px;">
+      <label>Omschrijving werkzaamheden (afmetingen &amp; materiaal, komt in de offerte)</label>
+      <textarea id="offerte-omschrijving" rows="5" placeholder="Wordt automatisch gevuld vanuit de begroting; hier nog aan te passen.">${esc(o.omschrijvingText||'')}</textarea>
     </div>
 
     <div class="panel" style="padding:18px;">
@@ -1361,7 +1382,7 @@ function attachViewHandlers(){
 
     document.getElementById('btn-onderdeel-toevoegen').addEventListener('click', ()=>{
       leesAlleOnderdelenUitDOM(p);
-      p.begroting.onderdelen.push({id:uid(), naam:'Nieuw onderdeel', materiaalregels:[], urenregels:[]});
+      p.begroting.onderdelen.push({id:uid(), naam:'Nieuw onderdeel', afmetingen:'', materiaalregels:[], urenregels:[]});
       render();
     });
 
@@ -1388,6 +1409,7 @@ function attachViewHandlers(){
         geldigTot: addDays(todayISO(), 30),
         btw: state.instellingen.btw,
         status: 'Concept',
+        omschrijvingText: p.begroting.onderdelen.map(o=>bouwOnderdeelOmschrijving(o)).filter(Boolean).join('\n\n'),
         regels: p.begroting.onderdelen.map(o=>{
           const b = berekenOnderdeel(o);
           return { id: uid(), omschrijving: o.naam, aantal: 1, eenheid: 'stuk', prijs: +b.aanneemsomExcl.toFixed(2) };
@@ -1422,6 +1444,7 @@ function attachViewHandlers(){
       o.regels = readRegelsFromDOM('offerte-regels-body');
       o.uwKenmerk = document.getElementById('offerte-uwkenmerk').value;
       o.behandelaar = document.getElementById('offerte-behandelaar').value;
+      o.omschrijvingText = document.getElementById('offerte-omschrijving').value;
       exporteerOfferteNaarWord(o);
     });
 
@@ -1456,6 +1479,7 @@ function attachViewHandlers(){
       o.geldigTot = document.getElementById('offerte-geldigtot').value;
       o.uwKenmerk = document.getElementById('offerte-uwkenmerk').value;
       o.behandelaar = document.getElementById('offerte-behandelaar').value;
+      o.omschrijvingText = document.getElementById('offerte-omschrijving').value;
       await saveState();
       showToast('Offerte opgeslagen');
       render();
@@ -1865,6 +1889,7 @@ function exporteerBegrotingNaarExcel(p){
     const aoa = [
       [o.naam],
       [`Klant: ${k? k.naam : ''}`, '', `Werknummer: ${p.id}`],
+      o.afmetingen ? [`Afmetingen: ${o.afmetingen}`] : [],
       [],
       ['Materiaal'],
       ['Aantal','Omschrijving','Prijs','Materiaal inkoop','Materiaal verkoop'],
@@ -2128,6 +2153,15 @@ async function exporteerOfferteNaarWord(o){
   xml += wPara({text:'Offerte', bold:true, size:30, align:'center', after:220});
   xml += wPara({text: geachte(k), size:20, after:160});
   xml += wPara({text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:20, after:220});
+
+  if(o.omschrijvingText && o.omschrijvingText.trim()){
+    o.omschrijvingText.split('\n').forEach(regel=>{
+      if(!regel.trim()){ xml += wPara({text:'', after:80}); return; }
+      const isKop = !regel.trim().startsWith('-');
+      xml += wPara({text: regel.trim(), bold: isKop, size:20, after: isKop? 40 : 60});
+    });
+    xml += wPara({text:'', after:160});
+  }
 
   const rows = o.regels.map(r=> wParaTab(regelTekstLinks(r), euro(regelTotaal(r)), {after:60}));
   xml += rows.join('');
