@@ -225,7 +225,6 @@
     <div class="nav-item" data-view="instellingen"><span class="dot"></span>Instellingen</div>
     <div class="nav-item" data-view="werknemers"><span class="dot"></span>Werknemers</div>
     <div class="nav-item" data-view="uren"><span class="dot"></span>Uren</div>
-    <div class="nav-item" data-view="materialen"><span class="dot"></span>Materialen</div>
     <div class="nav-item" data-view="backup"><span class="dot"></span>Back-up</div>
     <div id="nav-vergrendel" class="nav-item" style="margin-top:auto; display:none;"><span class="dot"></span>🔒 Vergrendelen</div>
   </aside>
@@ -265,7 +264,7 @@ const DEFAULT_LOGO_BASE64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgI
 
 function defaultState(){
   return {
-    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[], materialen:[],
+    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[],
     counters:{klant:0, project:0, offerte:0, factuur:0},
     instellingen:{ uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
       bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' }
@@ -277,7 +276,7 @@ const STORAGE_KEY = 'werkplaats-administratie-data';
 async function loadState(){
   state = defaultState();
   return new Promise((resolve)=>{
-    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false};
+    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false};
     function checkKlaar(){
       if(Object.values(ontvangen).every(Boolean)) resolve();
     }
@@ -291,11 +290,6 @@ async function loadState(){
       ontvangen.werknemers = true; checkKlaar();
       if(document.getElementById('app')) render();
     }, err=> console.error('werknemers', err)));
-    onSnapshotUnsubs.push(db.collection('materialen').onSnapshot(snap=>{
-      state.materialen = snap.docs.map(d=>({id:d.id, ...d.data()}));
-      ontvangen.materialen = true; checkKlaar();
-      if(document.getElementById('app')) render();
-    }, err=> console.error('materialen', err)));
     onSnapshotUnsubs.push(db.collection('klanten').onSnapshot(snap=>{
       state.klanten = snap.docs.map(d=>d.data());
       normaliseerState(); ontvangen.klanten = true; checkKlaar();
@@ -335,7 +329,6 @@ function normaliseerState(){
   if(!state.klanten) state.klanten = [];
   if(!state.werknemers) state.werknemers = [];
   if(!state.urenregistraties) state.urenregistraties = [];
-  if(!state.materialen) state.materialen = [];
   if(!state.counters) state.counters = {klant:0, project:0, offerte:0, factuur:0};
   if(!state.instellingen) state.instellingen = { uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
     bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' };
@@ -548,6 +541,7 @@ function render(){
   const main = document.getElementById('main-content');
   if(currentView === 'dashboard') main.innerHTML = viewDashboard();
   else if(currentView === 'klanten') main.innerHTML = viewKlanten();
+  else if(currentView === 'klant-detail') main.innerHTML = viewKlantDetail(currentParams.id);
   else if(currentView === 'projecten') main.innerHTML = viewProjecten();
   else if(currentView === 'project-detail') main.innerHTML = viewProjectDetail(currentParams.id);
   else if(currentView === 'offertes') main.innerHTML = viewOffertes();
@@ -557,7 +551,7 @@ function render(){
   else if(currentView === 'instellingen') main.innerHTML = viewInstellingen();
   else if(currentView === 'werknemers') main.innerHTML = viewWerknemers();
   else if(currentView === 'uren') main.innerHTML = viewUren();
-  else if(currentView === 'materialen') main.innerHTML = viewMaterialen();
+  else if(currentView === 'uren') main.innerHTML = viewUren();
   else if(currentView === 'backup') main.innerHTML = viewBackup();
   attachViewHandlers();
   toonVergrendelknopIndienNodig();
@@ -666,6 +660,99 @@ function viewKlanten(){
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function viewKlantDetail(id){
+  const k = klantById(id);
+  if(!k) return `<p>Klant niet gevonden. <a class="breadcrumb" data-nav="klanten">Terug naar klanten</a></p>`;
+  const projecten = state.projecten.filter(p=>p.klantId===id).sort((a,b)=> b.id.localeCompare(a.id));
+  const offertes = state.offertes.filter(o=>{ const p = projectById(o.projectId); return p && p.klantId===id; });
+  const facturen = state.facturen.filter(f=>{ const p = projectById(f.projectId); return p && p.klantId===id; });
+  const openstaand = som(facturen.filter(f=>f.status==='Open').map(f=> factuurTotalen(f).totaal));
+
+  return `
+    <div class="breadcrumb"><a data-nav="klanten">Klanten</a> / ${esc(k.id)}</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+      <div>
+        <h1 class="page-title"><span class="tag-nummer" style="vertical-align:2px;">${k.id}</span> &nbsp;${esc(k.naam)}</h1>
+        <p class="info-line">
+          ${k.contactpersoon? `<b>Contactpersoon:</b> ${esc(k.contactpersoon)} &nbsp;·&nbsp; ` : ''}
+          ${k.adres? `${esc(k.adres)}, `:''}${esc(`${k.postcode||''} ${k.plaats||''}`.trim())}
+          ${k.telefoon? ` &nbsp;·&nbsp; ${esc(k.telefoon)}`:''}${k.email? ` &nbsp;·&nbsp; ${esc(k.email)}`:''}
+        </p>
+      </div>
+      <button class="btn btn-sm" id="btn-klant-bewerken">Klantgegevens bewerken</button>
+    </div>
+
+    <div class="stat-grid" style="margin-top:22px;">
+      <div class="stat-card"><div class="label">Projecten</div><div class="value">${projecten.length}</div></div>
+      <div class="stat-card"><div class="label">Offertes</div><div class="value">${offertes.length}</div></div>
+      <div class="stat-card"><div class="label">Facturen</div><div class="value">${facturen.length}</div></div>
+      <div class="stat-card"><div class="label">Openstaand te ontvangen</div><div class="value">${euro(openstaand)}</div></div>
+    </div>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Alle projecten van deze klant</h2>
+    <div class="panel">
+      <table>
+        <thead><tr><th>Werknummer</th><th>Omschrijving</th><th>Status</th><th>Startdatum</th></tr></thead>
+        <tbody>
+          ${projecten.length ? projecten.map(p=>`
+            <tr data-open-project="${p.id}">
+              <td><span class="tag-nummer">${p.id}</span></td>
+              <td>${esc(p.omschrijving||'-')}</td>
+              <td>${statusBadge(p.status, PROJECT_STATUS_MAP)}</td>
+              <td>${fmtDate(p.startdatum)}</td>
+            </tr>
+          `).join('') : `<tr><td colspan="4" style="color:var(--text-muted);">Nog geen projecten voor deze klant</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    ${offertes.length ? `
+      <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Offertes</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Offertenummer</th><th>Project</th><th>Datum</th><th>Status</th><th style="text-align:right;">Bedrag</th></tr></thead>
+          <tbody>
+            ${offertes.sort((a,b)=>b.id.localeCompare(a.id)).map(o=>{
+              const proj = projectById(o.projectId);
+              const t = offerteTotalen(o);
+              return `<tr data-open-offerte="${o.id}">
+                <td><span class="tag-nummer copper">${o.id}</span></td>
+                <td>${proj? esc(proj.id) : '-'}</td>
+                <td>${fmtDate(o.datum)}</td>
+                <td>${statusBadge(o.status, OFFERTE_STATUS_MAP)}</td>
+                <td style="text-align:right;">${euro(t.totaal)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : ''}
+
+    ${facturen.length ? `
+      <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Facturen</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Factuurnummer</th><th>Type</th><th>Project</th><th>Datum</th><th>Status</th><th style="text-align:right;">Bedrag</th></tr></thead>
+          <tbody>
+            ${facturen.sort((a,b)=>b.id.localeCompare(a.id)).map(f=>{
+              const proj = projectById(f.projectId);
+              const t = factuurTotalen(f);
+              return `<tr data-open-factuur="${f.id}">
+                <td><span class="tag-nummer sage">${f.id}</span></td>
+                <td><span class="badge ${FACTUUR_TYPE_BADGE[f.type||'standaard']}">${FACTUUR_TYPE_LABEL[f.type||'standaard']}</span></td>
+                <td>${proj? esc(proj.id) : '-'}</td>
+                <td>${fmtDate(f.datum)}</td>
+                <td>${statusBadge(f.status, FACTUUR_STATUS_MAP)}</td>
+                <td style="text-align:right;">${euro(t.totaal)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : ''}
   `;
 }
 
@@ -830,7 +917,6 @@ function viewProjectDetail(id){
   const begroteUren = totaal.uren;
 
   return `
-    ${materialenDatalistXml()}
     <div class="breadcrumb"><a data-nav="projecten">Projecten</a> / ${esc(p.id)}</div>
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
       <div>
@@ -979,7 +1065,7 @@ function materiaalRegelRow(r){
   return `
     <tr data-regel-id="${r.id}">
       <td><input type="number" step="0.01" class="regel-aantal" value="${r.aantal}"></td>
-      <td><input type="text" class="regel-omschrijving" list="materialen-datalist" value="${esc(r.omschrijving)}" placeholder="Omschrijving of kies uit lijst"></td>
+      <td><input type="text" class="regel-omschrijving" value="${esc(r.omschrijving)}" placeholder="Omschrijving"></td>
       <td><input type="number" step="0.01" class="regel-prijs" value="${r.prijs}"></td>
       <td class="regel-verkoop-cel" style="text-align:right; font-variant-numeric:tabular-nums;">${euro(berekenMateriaalRegel(r).verkoop)}</td>
       <td><button class="btn-ghost btn-sm" data-del-materiaalregel="${r.id}" style="border:none; background:none; color:var(--rust); cursor:pointer;">&times;</button></td>
@@ -1286,7 +1372,7 @@ function attachViewHandlers(){
     main.querySelectorAll('[data-open-klant]').forEach(row=>{
       row.addEventListener('click', (e)=>{
         if(e.target.closest('[data-edit-klant],[data-del-klant]')) return;
-        openKlantModal(row.dataset.openKlant);
+        navigate('klant-detail', {id: row.dataset.openKlant});
       });
     });
     main.querySelectorAll('[data-edit-klant]').forEach(btn=>{
@@ -1294,6 +1380,20 @@ function attachViewHandlers(){
     });
     main.querySelectorAll('[data-del-klant]').forEach(btn=>{
       btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteKlant(btn.dataset.delKlant); });
+    });
+  }
+
+  if(currentView === 'klant-detail'){
+    const bewerkBtn = document.getElementById('btn-klant-bewerken');
+    if(bewerkBtn) bewerkBtn.addEventListener('click', ()=> openKlantModal(currentParams.id));
+    main.querySelectorAll('[data-open-project]').forEach(row=>{
+      row.addEventListener('click', ()=> navigate('project-detail', {id: row.dataset.openProject}));
+    });
+    main.querySelectorAll('[data-open-offerte]').forEach(row=>{
+      row.addEventListener('click', ()=> navigate('offerte-detail', {id: row.dataset.openOfferte}));
+    });
+    main.querySelectorAll('[data-open-factuur]').forEach(row=>{
+      row.addEventListener('click', ()=> navigate('factuur-detail', {id: row.dataset.openFactuur}));
     });
   }
 
@@ -1353,16 +1453,6 @@ function attachViewHandlers(){
 
     function bindOnderdeelInputs(){
       main.querySelectorAll('.materiaal-regels-body input, .uren-regels-body input').forEach(el=> el.addEventListener('input', herbereken));
-      main.querySelectorAll('.materiaal-regels-body .regel-omschrijving').forEach(el=>{
-        el.addEventListener('input', (e)=>{
-          const materiaal = state.materialen.find(m=> m.naam===e.target.value);
-          if(materiaal){
-            const row = e.target.closest('tr');
-            row.querySelector('.regel-prijs').value = materiaal.prijs;
-            herbereken();
-          }
-        });
-      });
       main.querySelectorAll('[data-del-materiaalregel]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           leesAlleOnderdelenUitDOM(p);
@@ -1762,18 +1852,6 @@ function attachViewHandlers(){
     });
   }
 
-  if(currentView === 'materialen'){
-    const zoek = document.getElementById('materiaal-zoek');
-    zoek.addEventListener('input', (e)=>{ materiaalZoek = e.target.value; render(); zoek_focus(); });
-    document.getElementById('btn-nieuw-materiaal').addEventListener('click', ()=> openMateriaalModal());
-    main.querySelectorAll('[data-edit-materiaal]').forEach(btn=>{
-      btn.addEventListener('click', ()=> openMateriaalModal(btn.dataset.editMateriaal));
-    });
-    main.querySelectorAll('[data-del-materiaal]').forEach(btn=>{
-      btn.addEventListener('click', ()=> verwijderMateriaal(btn.dataset.delMateriaal));
-    });
-  }
-
   if(currentView === 'backup'){
     document.getElementById('btn-backup-download').addEventListener('click', ()=>{
       exporteerBackup();
@@ -1794,7 +1872,7 @@ function attachViewHandlers(){
 }
 
 function zoek_focus(){
-  const el = document.getElementById('klant-zoek') || document.getElementById('project-zoek') || document.getElementById('materiaal-zoek');
+  const el = document.getElementById('klant-zoek') || document.getElementById('project-zoek');
   if(el){ el.focus(); const v = el.value; el.value=''; el.value=v; }
 }
 
@@ -2462,93 +2540,6 @@ async function maakWerknemerAccount(naam, wachtwoord){
   await db.collection('werknemers').doc(uid).set({naam, email, rol:'werknemer', actief:true});
   await secondaryAuth.signOut();
   return uid;
-}
-
-/* ===================== MATERIALEN (catalogus) ===================== */
-let materiaalZoek = '';
-function viewMaterialen(){
-  const q = materiaalZoek.toLowerCase();
-  const lijst = [...state.materialen]
-    .filter(m=> !q || (m.naam||'').toLowerCase().includes(q))
-    .sort((a,b)=> (a.naam||'').localeCompare(b.naam||''));
-  return `
-    <h1 class="page-title">Materialen</h1>
-    <p class="page-sub">Een vaste prijslijst — kies een materiaal in de begroting en de prijs wordt automatisch ingevuld.</p>
-
-    <div class="toolbar">
-      <input class="search-input" id="materiaal-zoek" placeholder="Zoek op naam..." value="${esc(materiaalZoek)}">
-      <button class="btn btn-primary" id="btn-nieuw-materiaal">+ Nieuw materiaal</button>
-    </div>
-
-    <div class="panel">
-      <table>
-        <thead><tr><th>Naam</th><th>Eenheid</th><th style="text-align:right;">Prijs (inkoop)</th><th></th></tr></thead>
-        <tbody>
-          ${lijst.length ? lijst.map(m=>`
-            <tr>
-              <td>${esc(m.naam)}</td>
-              <td>${esc(m.eenheid||'-')}</td>
-              <td style="text-align:right;">${euro(m.prijs)}</td>
-              <td>
-                <div class="row-actions" style="opacity:1;">
-                  <button class="btn btn-ghost btn-sm" data-edit-materiaal="${m.id}">Bewerken</button>
-                  <button class="btn btn-ghost btn-sm btn-danger" data-del-materiaal="${m.id}">Verwijderen</button>
-                </div>
-              </td>
-            </tr>
-          `).join('') : `<tr><td colspan="4"><div class="empty-state"><div class="title">Nog geen materialen</div>Voeg veelgebruikte materialen met hun inkoopprijs toe, zodat je die snel kunt kiezen in de begroting.</div></td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function materiaalForm(materiaal){
-  const m = materiaal || {naam:'', eenheid:'', prijs:0};
-  return `
-    <h2>${materiaal ? 'Materiaal bewerken' : 'Nieuw materiaal'}</h2>
-    <form id="materiaal-form">
-      <div class="field"><label>Naam</label><input type="text" name="naam" required value="${esc(m.naam)}" placeholder="Bijv. Berken multiplex 18mm"></div>
-      <div class="field-row">
-        <div class="field"><label>Eenheid (optioneel)</label><input type="text" name="eenheid" value="${esc(m.eenheid||'')}" placeholder="Bijv. m2, stuk, m1"></div>
-        <div class="field"><label>Prijs (inkoop)</label><input type="number" step="0.01" name="prijs" required value="${m.prijs}"></div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn" id="modal-cancel">Annuleren</button>
-        <button type="submit" class="btn btn-primary">${materiaal ? 'Opslaan' : 'Materiaal toevoegen'}</button>
-      </div>
-    </form>
-  `;
-}
-
-function openMateriaalModal(materiaalId){
-  const materiaal = materiaalId ? state.materialen.find(m=>m.id===materiaalId) : null;
-  openModal(materiaalForm(materiaal));
-  document.getElementById('modal-cancel').addEventListener('click', closeModal);
-  document.getElementById('materiaal-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const data = { naam: fd.get('naam').trim(), eenheid: fd.get('eenheid').trim(), prijs: parseFloat(fd.get('prijs'))||0 };
-    try{
-      if(materiaal){
-        await db.collection('materialen').doc(materiaal.id).update(data);
-      } else {
-        await db.collection('materialen').add(data);
-      }
-      closeModal();
-      showToast(materiaal ? 'Materiaal bijgewerkt' : 'Materiaal toegevoegd');
-    }catch(err){ showToast('Opslaan mislukt: ' + err.message); }
-  });
-}
-
-async function verwijderMateriaal(id){
-  if(!confirm('Dit materiaal uit de lijst verwijderen?')) return;
-  try{ await db.collection('materialen').doc(id).delete(); showToast('Materiaal verwijderd'); }
-  catch(err){ showToast('Verwijderen mislukt: ' + err.message); }
-}
-
-function materialenDatalistXml(){
-  return `<datalist id="materialen-datalist">${state.materialen.map(m=>`<option value="${esc(m.naam)}" data-prijs="${m.prijs}"></option>`).join('')}</datalist>`;
 }
 
 /* ===================== UREN (overzicht) ===================== */
