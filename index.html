@@ -267,7 +267,7 @@ function defaultState(){
     klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[],
     counters:{klant:0, project:0, offerte:0, factuur:0},
     instellingen:{ uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
-      bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' }
+      bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' }
   };
 }
 
@@ -331,11 +331,13 @@ function normaliseerState(){
   if(!state.urenregistraties) state.urenregistraties = [];
   if(!state.counters) state.counters = {klant:0, project:0, offerte:0, factuur:0};
   if(!state.instellingen) state.instellingen = { uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
-    bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' };
+    bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' };
   if(state.instellingen.bedrijfsnaam===undefined){
-    Object.assign(state.instellingen, {bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', kvk:'', btwnummer:'', iban:''});
+    Object.assign(state.instellingen, {bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:''});
   }
   if(state.instellingen.ondertekenaar===undefined) state.instellingen.ondertekenaar = '';
+  if(state.instellingen.website===undefined) state.instellingen.website = '';
+  if(state.instellingen.betalingscondities===undefined) state.instellingen.betalingscondities = '60% bij opdracht\n40% bij levering';
   if(state.instellingen.logoBase64===undefined) state.instellingen.logoBase64 = DEFAULT_LOGO_BASE64;
   if(state.instellingen.logoMime===undefined) state.instellingen.logoMime = 'image/jpeg';
   if(state.instellingen.pincodeHash===undefined) state.instellingen.pincodeHash = '';
@@ -1645,6 +1647,8 @@ function attachViewHandlers(){
       i.kvk = document.getElementById('inst-kvk').value;
       i.btwnummer = document.getElementById('inst-btwnummer').value;
       i.iban = document.getElementById('inst-iban').value;
+      i.website = document.getElementById('inst-website').value;
+      i.betalingscondities = document.getElementById('inst-betalingscondities').value;
       i.ondertekenaar = document.getElementById('inst-ondertekenaar').value;
       const logoInput = document.getElementById('inst-logo');
       if(logoInput.files && logoInput.files[0]){
@@ -1780,12 +1784,17 @@ function viewInstellingen(){
         <div class="field"><label>Telefoon</label><input type="text" id="inst-telefoon" value="${esc(i.telefoon)}"></div>
         <div class="field"><label>E-mail</label><input type="email" id="inst-email" value="${esc(i.email)}"></div>
       </div>
+      <div class="field"><label>Website</label><input type="text" id="inst-website" value="${esc(i.website)}" placeholder="www.jouwbedrijf.nl"></div>
       <div class="field-row">
         <div class="field"><label>KVK-nummer</label><input type="text" id="inst-kvk" value="${esc(i.kvk)}"></div>
         <div class="field"><label>Btw-nummer</label><input type="text" id="inst-btwnummer" value="${esc(i.btwnummer)}"></div>
       </div>
       <div class="field"><label>IBAN</label><input type="text" id="inst-iban" value="${esc(i.iban)}"></div>
       <div class="field"><label>Standaard ondertekenaar (bijv. "Onno Backer")</label><input type="text" id="inst-ondertekenaar" value="${esc(i.ondertekenaar)}"></div>
+      <div class="field">
+        <label>Betalingscondities (één per regel, komt in de offerte)</label>
+        <textarea id="inst-betalingscondities" rows="3">${esc(i.betalingscondities)}</textarea>
+      </div>
       <div class="field">
         <label>Logo (op offerte en factuur)</label>
         ${i.logoBase64 ? `<img src="data:${i.logoMime||'image/jpeg'};base64,${i.logoBase64}" style="max-width:220px; max-height:80px; display:block; margin-bottom:8px; border:1px solid var(--border); border-radius:6px; padding:4px;">` : `<p class="info-line" style="margin:0 0 8px;">Nog geen logo ingesteld — standaard bedrijfsnaam wordt gebruikt.</p>`}
@@ -2152,9 +2161,10 @@ async function exporteerOfferteNaarWord(o){
   xml += wPara({text:'', after:120});
   xml += wPara({text:'Offerte', bold:true, size:30, align:'center', after:220});
   xml += wPara({text: geachte(k), size:20, after:160});
-  xml += wPara({text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:20, after:220});
+  xml += wPara({text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:20, after:220});
 
   if(o.omschrijvingText && o.omschrijvingText.trim()){
+    xml += wPara({text:'Omschrijving werkzaamheden:', bold:true, size:20, after:100});
     o.omschrijvingText.split('\n').forEach(regel=>{
       if(!regel.trim()){ xml += wPara({text:'', after:80}); return; }
       const isKop = !regel.trim().startsWith('-');
@@ -2162,6 +2172,8 @@ async function exporteerOfferteNaarWord(o){
     });
     xml += wPara({text:'', after:160});
   }
+
+  xml += wPara({text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:20, after:140});
 
   const rows = o.regels.map(r=> wParaTab(regelTekstLinks(r), euro(regelTotaal(r)), {after:60}));
   xml += rows.join('');
@@ -2171,8 +2183,24 @@ async function exporteerOfferteNaarWord(o){
   xml += wParaTab(`Btw (${o.btw}%)`, euro(t.btw), {after:20});
   xml += wParaTab('Totaal', euro(t.totaal), {after:280, bold:true, size:24});
 
-  if(i.bedrijfsnaam) xml += wPara({text:`Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing.`, size:18, after:120});
-  xml += wPara({text:`Deze offerte is vrijblijvend en geldig tot ${fmtDate(o.geldigTot)}. Prijzen zijn exclusief ${o.btw}% btw.`, size:18, after:280});
+  if(i.bedrijfsnaam){
+    let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
+    if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
+    xml += wPara({text: voorwaardenTekst, size:18, after:140});
+  }
+
+  if(i.betalingscondities && i.betalingscondities.trim()){
+    xml += wPara({text:'Betalingscondities:', bold:true, size:18, after:60});
+    i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
+      xml += wPara({text:`- ${regel.trim()}`, size:18, after:20});
+    });
+    xml += wPara({text:`- Prijzen exclusief ${o.btw}% btw.`, size:18, after:140});
+  }
+
+  xml += wPara({text:'Werkzaamheden die niet in deze offerte zijn omschreven, zijn niet in deze prijs opgenomen.', size:18, after:20});
+  xml += wPara({text:`Deze offerte is vrijblijvend en geldig tot ${fmtDate(o.geldigTot)}.`, size:18, after:20});
+  xml += wPara({text:'Indien gewenst kunnen wij deze prijsopgave mondeling komen toelichten.', size:18, after:140});
+  xml += wPara({text:'Hopende u hiermee van dienst te zijn geweest, zien wij uw opdracht met belangstelling tegemoet.', size:20, after:280});
   xml += wPara({text:'Met vriendelijke groet,', size:20, after:280});
   if(behandelaar) xml += wPara({text:behandelaar, size:20, after:280});
 
