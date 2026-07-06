@@ -1873,27 +1873,47 @@ function exporteerBegrotingNaarExcel(p){
   const wb = XLSX.utils.book_new();
 
   // Voorblad
+  const gekoppeldeOffertesVb = state.offertes.filter(o=>o.projectId===p.id).sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+  const laatsteOfferteVb = gekoppeldeOffertesVb[gekoppeldeOffertesVb.length-1];
+  const behandelaarVb = (laatsteOfferteVb && laatsteOfferteVb.behandelaar) || i.ondertekenaar || '';
+  const klantkenmerkVb = (laatsteOfferteVb && laatsteOfferteVb.uwKenmerk) || '';
+  const gekoppeldeFacturenVb = state.facturen.filter(f=>f.projectId===p.id);
+  const voorschotFactuurVb = gekoppeldeFacturenVb.find(f=>f.type==='voorschot');
+  const eindFactuurVb = gekoppeldeFacturenVb.find(f=>f.type==='eind') || gekoppeldeFacturenVb.find(f=>f.type==='standaard');
+
   const voorbladAoa = [
-    [i.bedrijfsnaam || 'Begrotingsstaat'],
+    [i.bedrijfsnaam || '', '', '', '', '', p.id],
     [],
-    ['Werknummer', p.id],
-    ['Omschrijving', p.omschrijving || ''],
-    ['Status', p.status || ''],
-    ['Startdatum', fmtDate(p.startdatum)],
+    ['klant', k? k.naam : ''],
+    ['', k? (k.adres||'') : ''],
+    ['', k? `${k.postcode||''} ${k.plaats||''}`.trim() : ''],
     [],
-    ['Opdrachtgever'],
-    ['Naam', k? k.naam : ''],
-    ['Contactpersoon', k? (k.contactpersoon||'') : ''],
-    ['Adres', k? (k.adres||'') : ''],
-    ['Postcode / plaats', k? `${k.postcode||''} ${k.plaats||''}`.trim() : ''],
-    ['Telefoon', k? (k.telefoon||'') : ''],
-    ['E-mail', k? (k.email||'') : ''],
-    ['Klantnummer', k? k.id : ''],
+    ['contact', k? (k.contactpersoon||'') : ''],
+    ['klantkenmerk', klantkenmerkVb],
+    ['werknemer', behandelaarVb],
+    ['omschrijving', p.omschrijving || ''],
     [],
-    ['Datum export', fmtDate(todayISO())],
+    ['', '', '', '', 'behandeld door', behandelaarVb],
+    [fmtDate(p.startdatum), 'aanvraag'],
+    ['', 'offreren', '', '', '', laatsteOfferteVb? laatsteOfferteVb.id : ''],
+    ['', 'opvolgen'],
+    ['', 'bevestigen'],
+    [],
+    ['', 'voorbereiden'],
+    ['', 'materiaal bestellen'],
+    ['', 'materiaal ontvangen'],
+    ['', 'montage'],
+    ['', 'nacalculeren'],
+    ['', 'voorschotfactuur', '', 'nr:', voorschotFactuurVb? voorschotFactuurVb.id : '', 'betaald:', voorschotFactuurVb && voorschotFactuurVb.status==='Betaald' ? 'ja':''],
+    ['', 'eindfactuur', '', 'nr:', eindFactuurVb? eindFactuurVb.id : '', 'betaald:', eindFactuurVb && eindFactuurVb.status==='Betaald' ? 'ja':''],
+    [],
+    ['', 'resultaat', '', '', '', '', '', p.id],
+    [],
+    [i.bedrijfsnaam || ''],
+    [`${i.adres||''}  ${i.postcode||''} ${i.plaats||''}`.trim()],
   ];
   const voorbladWs = XLSX.utils.aoa_to_sheet(voorbladAoa);
-  voorbladWs['!cols'] = [{wch:20},{wch:36}];
+  voorbladWs['!cols'] = [{wch:10},{wch:22},{wch:8},{wch:8},{wch:14},{wch:16},{wch:10}];
   XLSX.utils.book_append_sheet(wb, voorbladWs, 'Voorblad');
 
   // Kengetallen-blad
