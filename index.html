@@ -1901,6 +1901,7 @@ function exporteerBegrotingNaarExcel(p){
     ['', k? `${k.postcode||''} ${k.plaats||''}`.trim() : ''],
     [],
     ['contact', k? (k.contactpersoon||'') : ''],
+    ['klantnummer', k? k.id : ''],
     ['klantkenmerk', klantkenmerkVb],
     ['werknemer', behandelaarVb],
     ['omschrijving', p.omschrijving || ''],
@@ -1929,8 +1930,8 @@ function exporteerBegrotingNaarExcel(p){
   voorbladWs['!pageSetup'] = { paperSize:9, orientation:'portrait', fitToWidth:1, fitToHeight:1, scale:100 };
   voorbladWs['!margins'] = { left:0.5, right:0.5, top:0.6, bottom:0.6, header:0.3, footer:0.3 };
   voorbladWs['!fitToPage'] = true;
-  ['A1','F1','H26','A28'].forEach(cellRef=>{
-    if(voorbladWs[cellRef]) voorbladWs[cellRef].s = { font:{ bold:true, sz: cellRef==='F1'||cellRef==='H26'? 20 : 12 } };
+  ['A1','F1','H27','A29'].forEach(cellRef=>{
+    if(voorbladWs[cellRef]) voorbladWs[cellRef].s = { font:{ bold:true, sz: cellRef==='F1'||cellRef==='H27'? 20 : 12 } };
   });
   XLSX.utils.book_append_sheet(wb, voorbladWs, 'Voorblad');
 
@@ -2336,6 +2337,7 @@ async function exporteerVoorbladNaarWord(p){
 
   xml += klantAanhefXml(k);
   xml += wKenmerkenXml([
+    ['Klantnummer', k? k.id : ''],
     ['Klantkenmerk', klantkenmerk],
     ['Behandeld door', behandelaar],
     ['Omschrijving', p.omschrijving || ''],
