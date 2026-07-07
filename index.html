@@ -766,10 +766,17 @@ function viewKlantDetail(id){
 }
 
 function klantForm(klant){
-  const k = klant || {naam:'', contactpersoon:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', notities:''};
+  const k = klant || {naam:'', type:'Bedrijf', contactpersoon:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', notities:''};
   return `
     <h2>${klant ? 'Klant bewerken' : 'Nieuwe klant'}</h2>
     <form id="klant-form">
+      <div class="field">
+        <label>Type</label>
+        <select name="type">
+          <option value="Bedrijf" ${k.type!=='Particulier'?'selected':''}>Bedrijf</option>
+          <option value="Particulier" ${k.type==='Particulier'?'selected':''}>Particulier</option>
+        </select>
+      </div>
       <div class="field"><label>Naam</label><input type="text" name="naam" required value="${esc(k.naam)}"></div>
       <div class="field"><label>Contactpersoon (t.a.v.)</label><input type="text" name="contactpersoon" value="${esc(k.contactpersoon)}" placeholder="Optioneel, indien anders dan naam"></div>
       <div class="field"><label>Adres</label><input type="text" name="adres" value="${esc(k.adres)}"></div>
@@ -2074,7 +2081,7 @@ function viewInstellingen(){
     </div>
 
     <h2 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:24px 0 10px;">Documenten opslaan op deze computer</h2>
-    <p class="page-sub" style="margin-top:-2px;">Kies één keer een map op deze computer; Word- en Excel-exports worden dan automatisch in een submapje per project opgeslagen, in plaats van steeds naar Downloads. Werkt alleen in Chrome/Edge op een computer (niet op de iPhone-app).</p>
+    <p class="page-sub" style="margin-top:-2px;">Kies één keer een hoofdmap op deze computer. Exports worden dan automatisch zo opgeslagen: <i>Bedrijven/Particulieren → klant (met klantnummer) → "Offertes en facturen"</i> voor offertes en facturen, en los in de klantmap voor het voorblad en de Excel-begroting. Werkt alleen in Chrome/Edge op een computer (niet op de iPhone-app). Zorg dat elke klant een "Type" (Bedrijf/Particulier) heeft ingesteld bij Klanten.</p>
     <div class="panel" style="padding:22px; max-width:420px;">
       ${!ondersteuntBestandsMap() ? `
         <p class="info-line" style="margin:0;">Deze browser ondersteunt dit niet. Probeer Chrome of Edge op een computer.</p>
@@ -2319,7 +2326,7 @@ async function exporteerBegrotingNaarExcel(p){
 
   const arrayBuffer = XLSX.write(wb, {type:'array', bookType:'xlsx', cellStyles:true});
   const blob = new Blob([arrayBuffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const inMapOpgeslagen = await bewaarBestand(`Begroting_${p.id}.xlsx`, blob, p);
+  const inMapOpgeslagen = await bewaarBestand(`Begroting_${p.id}.xlsx`, blob, p, 'los');
   showToast(inMapOpgeslagen ? 'Opgeslagen in map (Excel)' : 'Excel-bestand gedownload');
 }
 
@@ -2488,7 +2495,24 @@ async function haalGeldigeMapHandle(){
 function saneerMapnaam(naam){
   return String(naam||'').replace(/[\\/:*?"<>|]/g,' ').trim().slice(0,60) || 'Project';
 }
-async function bewaarBestand(bestandsnaam, blob, project){
+async function bepaalDoelMap(rootHandle, project, categorie){
+  const klant = project ? klantById(project.klantId) : null;
+  if(!klant){
+    // Geen klant gekoppeld: terugvaloptie, gewoon een map per project in de hoofdmap
+    const submapNaam = saneerMapnaam(`${project.id} - ${project.omschrijving||''}`);
+    return await rootHandle.getDirectoryHandle(submapNaam, {create:true});
+  }
+  const typeMapNaam = klant.type === 'Particulier' ? 'Particulieren' : 'Bedrijven';
+  const typeMap = await rootHandle.getDirectoryHandle(typeMapNaam, {create:true});
+  const klantMapNaam = saneerMapnaam(`${klant.id} - ${klant.naam}`);
+  const klantMap = await typeMap.getDirectoryHandle(klantMapNaam, {create:true});
+  if(categorie === 'offerte-factuur'){
+    return await klantMap.getDirectoryHandle('Offertes en facturen', {create:true});
+  }
+  return klantMap; // categorie 'los': voorblad en begroting direct in de klantmap
+}
+
+async function bewaarBestand(bestandsnaam, blob, project, categorie='los'){
   const rootHandle = await haalGeldigeMapHandle();
   if(!rootHandle){
     const url = URL.createObjectURL(blob);
@@ -2499,11 +2523,7 @@ async function bewaarBestand(bestandsnaam, blob, project){
     return false;
   }
   try{
-    let doelMap = rootHandle;
-    if(project){
-      const submapNaam = saneerMapnaam(`${project.id} - ${project.omschrijving||''}`);
-      doelMap = await rootHandle.getDirectoryHandle(submapNaam, {create:true});
-    }
+    const doelMap = project ? await bepaalDoelMap(rootHandle, project, categorie) : rootHandle;
     const fileHandle = await doelMap.getFileHandle(bestandsnaam, {create:true});
     const writable = await fileHandle.createWritable();
     await writable.write(blob);
@@ -2520,7 +2540,7 @@ async function bewaarBestand(bestandsnaam, blob, project){
   }
 }
 
-async function genereerDocx(filename, bodyXml, {logoExt=null, logoBase64=null, project=null}={}){
+async function genereerDocx(filename, bodyXml, {logoExt=null, logoBase64=null, project=null, categorie='los'}={}){
   if(typeof JSZip === 'undefined'){ showToast('Word-bibliotheek kon niet laden, controleer je internetverbinding'); return; }
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -2538,7 +2558,7 @@ ${bodyXml}
     zip.file(`word/media/logo.${logoExt}`, logoBase64, {base64:true});
   }
   const blob = await zip.generateAsync({type:'blob'});
-  const inMapOpgeslagen = await bewaarBestand(filename, blob, project);
+  const inMapOpgeslagen = await bewaarBestand(filename, blob, project, categorie);
   showToast(inMapOpgeslagen ? `Opgeslagen in map (${filename})` : 'Word-bestand gedownload');
 }
 
@@ -2625,7 +2645,7 @@ async function exporteerOfferteNaarWord(o){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
+  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'offerte-factuur'});
 }
 
 async function exporteerFactuurNaarWord(f){
@@ -2669,7 +2689,7 @@ async function exporteerFactuurNaarWord(f){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
+  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'offerte-factuur'});
 }
 
 async function exporteerVoorbladNaarWord(p){
@@ -2726,7 +2746,7 @@ async function exporteerVoorbladNaarWord(p){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
+  await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'los'});
 }
 
 /* ===================== WERKNEMERS ===================== */
