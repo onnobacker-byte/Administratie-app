@@ -513,6 +513,16 @@ function bouwOnderdeelOmschrijving(o){
   return `${o.naam}\n${regels.map(r=>`- ${r}`).join('\n')}`;
 }
 
+function openMailtoKlant(klant, onderwerp, tekst){
+  if(!klant || !klant.email){
+    showToast('Deze klant heeft geen e-mailadres ingevuld');
+    return;
+  }
+  const link = `mailto:${encodeURIComponent(klant.email)}?subject=${encodeURIComponent(onderwerp)}&body=${encodeURIComponent(tekst)}`;
+  window.location.href = link;
+  showToast('Mailprogramma geopend — vergeet niet het gedownloade bestand als bijlage toe te voegen');
+}
+
 function statusBadge(status, map){
   const cls = map[status] || 'badge-gray';
   return `<span class="badge ${cls}">${esc(status)}</span>`;
@@ -1215,6 +1225,7 @@ function viewOfferteDetail(id){
         ${OFFERTE_STATUS.map(s=>`<option value="${s}" ${s===o.status?'selected':''}>${s}</option>`).join('')}
       </select>
       <button class="btn btn-sm" id="btn-export-word">Exporteer naar Word</button>
+      <button class="btn btn-sm" id="btn-mail-offerte">Mail versturen</button>
     </div>
 
     <div class="field-row" style="max-width:420px; margin:18px 0;">
@@ -1361,6 +1372,7 @@ function viewFactuurDetail(id){
         ${FACTUUR_STATUS.map(s=>`<option value="${s}" ${s===f.status?'selected':''}>${s}</option>`).join('')}
       </select>
       <button class="btn btn-sm" id="btn-export-word">Exporteer naar Word</button>
+      <button class="btn btn-sm" id="btn-mail-factuur">Mail versturen</button>
     </div>
 
     <div class="field-row" style="max-width:420px; margin:18px 0;">
@@ -1684,6 +1696,13 @@ function attachViewHandlers(){
       o.omschrijvingText = document.getElementById('offerte-omschrijving').value;
       exporteerOfferteNaarWord(o);
     });
+    document.getElementById('btn-mail-offerte').addEventListener('click', ()=>{
+      const proj = projectById(o.projectId);
+      const klant = proj ? klantById(proj.klantId) : null;
+      const onderwerp = `Offerte ${o.id}${proj? ' - '+proj.omschrijving : ''} - ${state.instellingen.bedrijfsnaam||''}`;
+      const tekst = `Geachte heer/mevrouw,\n\nHierbij ontvangt u onze offerte ${o.id}${proj? ' betreffende '+proj.omschrijving : ''}.\n\nDe offerte vindt u als bijlage (voeg het zojuist gedownloade Word-bestand toe).\n\nMet vriendelijke groet,\n${o.behandelaar || state.instellingen.ondertekenaar || ''}\n${state.instellingen.bedrijfsnaam||''}`;
+      openMailtoKlant(klant, onderwerp, tekst);
+    });
 
     document.getElementById('btn-offerte-regel-toevoegen').addEventListener('click', ()=>{
       o.regels = readRegelsFromDOM('offerte-regels-body');
@@ -1827,6 +1846,14 @@ function attachViewHandlers(){
       f.uwKenmerk = document.getElementById('factuur-uwkenmerk').value;
       f.behandelaar = document.getElementById('factuur-behandelaar').value;
       exporteerFactuurNaarWord(f);
+    });
+    document.getElementById('btn-mail-factuur').addEventListener('click', ()=>{
+      const proj = projectById(f.projectId);
+      const klant = proj ? klantById(proj.klantId) : null;
+      const typeLabel = FACTUUR_TYPE_LABEL[f.type||'standaard'];
+      const onderwerp = `${typeLabel} ${f.id}${proj? ' - '+proj.omschrijving : ''} - ${state.instellingen.bedrijfsnaam||''}`;
+      const tekst = `Geachte heer/mevrouw,\n\nHierbij ontvangt u onze ${typeLabel.toLowerCase()} ${f.id}${proj? ' betreffende '+proj.omschrijving : ''}.\n\nDe factuur vindt u als bijlage (voeg het zojuist gedownloade Word-bestand toe).\n\nMet vriendelijke groet,\n${f.behandelaar || state.instellingen.ondertekenaar || ''}\n${state.instellingen.bedrijfsnaam||''}`;
+      openMailtoKlant(klant, onderwerp, tekst);
     });
 
     document.getElementById('btn-factuur-regel-toevoegen').addEventListener('click', ()=>{
