@@ -1784,6 +1784,34 @@ function attachViewHandlers(){
       render();
     });
 
+    if(ondersteuntBestandsMap()){
+      (async ()=>{
+        const statusEl = document.getElementById('documentenmap-status');
+        const handle = await haalMapHandleOp();
+        if(!handle){ statusEl.textContent = 'Nog geen map gekozen — exports gaan naar Downloads.'; return; }
+        try{
+          const perm = await handle.queryPermission({mode:'readwrite'});
+          statusEl.textContent = perm==='granted'
+            ? `Ingesteld: "${handle.name}" (submapje per project)`
+            : `Map "${handle.name}" gekozen, maar toegang moet opnieuw bevestigd worden bij de volgende export.`;
+        }catch(e){ statusEl.textContent = 'Nog geen map gekozen — exports gaan naar Downloads.'; }
+      })();
+
+      document.getElementById('btn-kies-documentenmap').addEventListener('click', async ()=>{
+        try{
+          const handle = await window.showDirectoryPicker({mode:'readwrite'});
+          await bewaarMapHandle(handle);
+          showToast(`Map "${handle.name}" ingesteld`);
+          render();
+        }catch(e){ /* geannuleerd door gebruiker */ }
+      });
+      document.getElementById('btn-verwijder-documentenmap').addEventListener('click', async ()=>{
+        await verwijderMapHandle();
+        showToast('Map losgekoppeld, exports gaan weer naar Downloads');
+        render();
+      });
+    }
+
     const btnPincodeOpslaan = document.getElementById('btn-pincode-opslaan');
     if(btnPincodeOpslaan) btnPincodeOpslaan.addEventListener('click', async ()=>{
       const nieuw = document.getElementById('inst-pincode-nieuw').value;
@@ -1925,6 +1953,20 @@ function viewInstellingen(){
       </div>
     </div>
 
+    <h2 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:24px 0 10px;">Documenten opslaan op deze computer</h2>
+    <p class="page-sub" style="margin-top:-2px;">Kies één keer een map op deze computer; Word- en Excel-exports worden dan automatisch in een submapje per project opgeslagen, in plaats van steeds naar Downloads. Werkt alleen in Chrome/Edge op een computer (niet op de iPhone-app).</p>
+    <div class="panel" style="padding:22px; max-width:420px;">
+      ${!ondersteuntBestandsMap() ? `
+        <p class="info-line" style="margin:0;">Deze browser ondersteunt dit niet. Probeer Chrome of Edge op een computer.</p>
+      ` : `
+        <p class="info-line" id="documentenmap-status" style="margin-bottom:14px;">Bezig met controleren...</p>
+        <div class="modal-actions" style="justify-content:flex-start; gap:8px;">
+          <button class="btn btn-primary" id="btn-kies-documentenmap">Kies map op deze computer</button>
+          <button class="btn btn-danger" id="btn-verwijder-documentenmap">Map loskoppelen</button>
+        </div>
+      `}
+    </div>
+
     <h2 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:24px 0 10px;">Beveiliging</h2>
     <p class="page-sub" style="margin-top:-2px;">Een eenvoudige pincode-vergrendeling voor als deze computer door meerdere mensen wordt gebruikt. Dit is een basisbeveiliging, geen sterke versleuteling.</p>
     <div class="panel" style="padding:22px; max-width:420px;">
@@ -1986,7 +2028,7 @@ function sheetNaam(naam, gebruikt){
   return out;
 }
 
-function exporteerBegrotingNaarExcel(p){
+async function exporteerBegrotingNaarExcel(p){
   if(typeof XLSX === 'undefined'){ showToast('Excel-bibliotheek kon niet laden, controleer je internetverbinding'); return; }
   const k = klantById(p.klantId);
   const i = state.instellingen;
@@ -2155,8 +2197,10 @@ function exporteerBegrotingNaarExcel(p){
   XLSX.utils.book_append_sheet(wb, totWs, 'Totaaloverzicht');
   wb.SheetNames = ['Voorblad', 'Totaaloverzicht', ...sheets];
 
-  XLSX.writeFile(wb, `Begroting_${p.id}.xlsx`, {cellStyles:true});
-  showToast('Excel-bestand gedownload');
+  const arrayBuffer = XLSX.write(wb, {type:'array', bookType:'xlsx', cellStyles:true});
+  const blob = new Blob([arrayBuffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const inMapOpgeslagen = await bewaarBestand(`Begroting_${p.id}.xlsx`, blob, p);
+  showToast(inMapOpgeslagen ? 'Opgeslagen in map (Excel)' : 'Excel-bestand gedownload');
 }
 
 /* ===================== WORD EXPORT (offerte / factuur) ===================== */
@@ -2270,7 +2314,93 @@ function footerRegelXml(){
   return wPara({text: delen.join('   ·   '), size:16, align:'center', after:0});
 }
 
-async function genereerDocx(filename, bodyXml, {logoExt=null, logoBase64=null}={}){
+/* ===================== DOCUMENTENMAP (opslaan op de computer) ===================== */
+function ondersteuntBestandsMap(){
+  return typeof window.showDirectoryPicker === 'function';
+}
+function openHandleDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open('werkplaats-bestandshandles', 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function bewaarMapHandle(handle){
+  const idb = await openHandleDB();
+  return new Promise((resolve, reject)=>{
+    const tx = idb.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'documentenmap');
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function verwijderMapHandle(){
+  const idb = await openHandleDB();
+  return new Promise((resolve, reject)=>{
+    const tx = idb.transaction('handles', 'readwrite');
+    tx.objectStore('handles').delete('documentenmap');
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function haalMapHandleOp(){
+  try{
+    const idb = await openHandleDB();
+    return await new Promise((resolve, reject)=>{
+      const tx = idb.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('documentenmap');
+      req.onsuccess = ()=> resolve(req.result || null);
+      req.onerror = ()=> reject(req.error);
+    });
+  }catch(e){ return null; }
+}
+async function haalGeldigeMapHandle(){
+  if(!ondersteuntBestandsMap()) return null;
+  const handle = await haalMapHandleOp();
+  if(!handle) return null;
+  try{
+    let perm = await handle.queryPermission({mode:'readwrite'});
+    if(perm !== 'granted') perm = await handle.requestPermission({mode:'readwrite'});
+    return perm === 'granted' ? handle : null;
+  }catch(e){ return null; }
+}
+function saneerMapnaam(naam){
+  return String(naam||'').replace(/[\\/:*?"<>|]/g,' ').trim().slice(0,60) || 'Project';
+}
+async function bewaarBestand(bestandsnaam, blob, project){
+  const rootHandle = await haalGeldigeMapHandle();
+  if(!rootHandle){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = bestandsnaam;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    return false;
+  }
+  try{
+    let doelMap = rootHandle;
+    if(project){
+      const submapNaam = saneerMapnaam(`${project.id} - ${project.omschrijving||''}`);
+      doelMap = await rootHandle.getDirectoryHandle(submapNaam, {create:true});
+    }
+    const fileHandle = await doelMap.getFileHandle(bestandsnaam, {create:true});
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  }catch(e){
+    showToast('Opslaan in map mislukt, bestand wordt gedownload: ' + e.message);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = bestandsnaam;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    return false;
+  }
+}
+
+async function genereerDocx(filename, bodyXml, {logoExt=null, logoBase64=null, project=null}={}){
   if(typeof JSZip === 'undefined'){ showToast('Word-bibliotheek kon niet laden, controleer je internetverbinding'); return; }
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -2288,12 +2418,8 @@ ${bodyXml}
     zip.file(`word/media/logo.${logoExt}`, logoBase64, {base64:true});
   }
   const blob = await zip.generateAsync({type:'blob'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=> URL.revokeObjectURL(url), 4000);
-  showToast('Word-bestand gedownload');
+  const inMapOpgeslagen = await bewaarBestand(filename, blob, project);
+  showToast(inMapOpgeslagen ? `Opgeslagen in map (${filename})` : 'Word-bestand gedownload');
 }
 
 function klantAanhefXml(k){
@@ -2379,7 +2505,7 @@ async function exporteerOfferteNaarWord(o){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64});
+  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
 }
 
 async function exporteerFactuurNaarWord(f){
@@ -2423,7 +2549,7 @@ async function exporteerFactuurNaarWord(f){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64});
+  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
 }
 
 async function exporteerVoorbladNaarWord(p){
@@ -2480,7 +2606,7 @@ async function exporteerVoorbladNaarWord(p){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64});
+  await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p});
 }
 
 /* ===================== WERKNEMERS ===================== */
