@@ -2589,7 +2589,10 @@ function pdfKlantAanhefBlocks(k){
   return blocks;
 }
 function pdfKenmerkenBlocks(pairs){
-  const blocks = pairs.filter(p=>p[1]!==null).map(([l,v])=>({t:'text', text:`${l}: ${v||''}`, size:9.5}));
+  const zichtbaar = pairs.filter(p=>p[1]!==null);
+  if(!zichtbaar.length) return [];
+  const labelKolomBreedte = Math.max(...zichtbaar.map(([l])=> l.length)) * 1.85 + 4;
+  const blocks = zichtbaar.map(([l,v])=>({t:'kenmerk', label:l, value:v||'', size:9.5, labelKolomBreedte}));
   blocks.push({t:'space', h:6});
   return blocks;
 }
@@ -2621,9 +2624,10 @@ async function genereerPdf(filename, blocks, {project=null, categorie='los'}={})
       const ext = mime.includes('png') ? 'PNG' : 'JPEG';
       const dataUrl = `data:${mime};base64,${i.logoBase64}`;
       const props = doc.getImageProperties(dataUrl);
-      const imgWidthMm = 38;
+      const imgWidthMm = 76;
       const imgHeightMm = imgWidthMm * (props.height/props.width);
       doc.addImage(dataUrl, ext, pageWidth - marginRight - imgWidthMm, 12, imgWidthMm, imgHeightMm);
+      y = Math.max(y, 12 + imgHeightMm + 8);
     }catch(e){ /* logo overslaan bij fout, rest van het document gaat gewoon door */ }
   }
 
@@ -2650,6 +2654,13 @@ async function genereerPdf(filename, blocks, {project=null, categorie='los'}={})
       doc.text(String(b.left||''), marginLeft, y);
       doc.text(String(b.right||''), pageWidth-marginRight, y, {align:'right'});
       y += lineHeightMm + 1.6;
+    } else if(b.t==='kenmerk'){
+      nieuwePaginaIndienNodig(lineHeightMm+2);
+      const labelKolomBreedte = b.labelKolomBreedte || 40;
+      doc.text(String(b.label||''), marginLeft+labelKolomBreedte, y, {align:'right'});
+      doc.text(':', marginLeft+labelKolomBreedte+1.5, y);
+      doc.text(String(b.value||''), marginLeft+labelKolomBreedte+5, y);
+      y += lineHeightMm + 1.3;
     }
   });
 
@@ -2667,7 +2678,6 @@ async function exporteerOfferteNaarPdf(o){
   const plaats = i.plaats || '';
 
   let blocks = [];
-  blocks.push(...pdfBedrijfsHeaderBlocks());
   blocks.push(...pdfKlantAanhefBlocks(k));
   blocks.push(...pdfKenmerkenBlocks([
     ['Datum', `${plaats? plaats+', ':''}${fmtDate(o.datum)}`],
@@ -2730,7 +2740,6 @@ async function exporteerFactuurNaarPdf(f){
   const plaats = i.plaats || '';
 
   let blocks = [];
-  blocks.push(...pdfBedrijfsHeaderBlocks());
   blocks.push(...pdfKlantAanhefBlocks(k));
   blocks.push(...pdfKenmerkenBlocks([
     ['Datum', `${plaats? plaats+', ':''}${fmtDate(f.datum)}`],
@@ -2772,7 +2781,6 @@ async function exporteerVoorbladNaarPdf(p){
   const eindFactuur = gekoppeldeFacturen.find(f=>f.type==='eind') || gekoppeldeFacturen.find(f=>f.type==='standaard');
 
   let blocks = [];
-  blocks.push(...pdfBedrijfsHeaderBlocks());
   blocks.push({t:'text', text:'Voorblad', size:10, align:'center'});
   blocks.push({t:'text', text:p.id, bold:true, size:26, align:'center'}, {t:'space', h:8});
   blocks.push(...pdfKlantAanhefBlocks(k));
