@@ -910,6 +910,10 @@ function viewProjectDetail(id){
   if(!p) return `<p>Project niet gevonden. <a class="breadcrumb" data-nav="projecten">Terug naar projecten</a></p>`;
   const k = klantById(p.klantId);
   const gekoppeldeOffertes = state.offertes.filter(o=>o.projectId===id);
+  const facturenVoorProject = state.facturen.filter(f=>f.projectId===id);
+  const facturatieOfferte = gekoppeldeOffertes.filter(o=>o.regels.length).sort((a,b)=>(a.datum||'').localeCompare(b.datum||'')).pop();
+  const voorschotFactuurP = facturenVoorProject.find(f=>f.type==='voorschot');
+  const eindFactuurP = facturenVoorProject.find(f=>f.type==='eind');
   const totaal = berekenBegroting(p.begroting);
   const i = state.instellingen;
   const geregistreerdeUren = state.urenregistraties.filter(u=>u.projectId===id);
@@ -1005,6 +1009,23 @@ function viewProjectDetail(id){
             }).join('')}
           </tbody>
         </table>
+      </div>
+
+      <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Facturatie</h2>
+      <div class="panel" style="padding:18px 22px;">
+        ${facturatieOfferte ? `
+          <p class="info-line" style="margin:0 0 14px;">Gebaseerd op offerte <span class="tag-nummer copper">${facturatieOfferte.id}</span></p>
+          <div style="display:flex; gap:32px; flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:600; margin-bottom:8px;">Voorschotfactuur</div>
+              ${voorschotFactuurP ? `<span class="tag-nummer sage" data-open-factuur="${voorschotFactuurP.id}" style="cursor:pointer;">${voorschotFactuurP.id}</span> ${statusBadge(voorschotFactuurP.status, FACTUUR_STATUS_MAP)}` : `<button class="btn btn-sm" id="btn-project-voorschot">Voorschotfactuur maken</button>`}
+            </div>
+            <div>
+              <div style="font-weight:600; margin-bottom:8px;">Eindfactuur</div>
+              ${eindFactuurP ? `<span class="tag-nummer sage" data-open-factuur="${eindFactuurP.id}" style="cursor:pointer;">${eindFactuurP.id}</span> ${statusBadge(eindFactuurP.status, FACTUUR_STATUS_MAP)}` : `<button class="btn btn-sm" id="btn-project-eind">Eindfactuur maken</button>`}
+            </div>
+          </div>
+        ` : `<p class="info-line" style="margin:0;">Maak eerst een offerte met prijsregels aan om te kunnen factureren.</p>`}
       </div>
     ` : ''}
   `;
@@ -1416,6 +1437,7 @@ function attachViewHandlers(){
   if(currentView === 'project-detail'){
     const p = projectById(currentParams.id);
     if(!p) return;
+    const facturatieOfferte = state.offertes.filter(o=>o.projectId===p.id && o.regels.length).sort((a,b)=>(a.datum||'').localeCompare(b.datum||'')).pop();
 
     document.getElementById('project-status-select').addEventListener('change', async (e)=>{
       p.status = e.target.value; await saveState(); showToast('Status bijgewerkt');
@@ -1546,6 +1568,72 @@ function attachViewHandlers(){
 
     main.querySelectorAll('[data-open-offerte]').forEach(row=>{
       row.addEventListener('click', ()=> navigate('offerte-detail', {id: row.dataset.openOfferte}));
+    });
+    main.querySelectorAll('[data-open-factuur]').forEach(el=>{
+      el.addEventListener('click', ()=> navigate('factuur-detail', {id: el.dataset.openFactuur}));
+    });
+
+    function maakFactuurBasisProject(fo, type){
+      return {
+        id: nextFactuurNummer(),
+        projectId: p.id,
+        offerteId: fo.id,
+        datum: todayISO(),
+        vervaldatum: addDays(todayISO(), 30),
+        btw: fo.btw,
+        status: 'Open',
+        type,
+        uwKenmerk: fo.uwKenmerk || '',
+        behandelaar: fo.behandelaar || state.instellingen.ondertekenaar || '',
+      };
+    }
+
+    const btnProjectVoorschot = document.getElementById('btn-project-voorschot');
+    if(btnProjectVoorschot) btnProjectVoorschot.addEventListener('click', ()=>{
+      openModal(`
+        <h2>Voorschotfactuur maken</h2>
+        <form id="voorschot-form-project">
+          <div class="field"><label>Percentage van de offerte (excl. btw)</label><input type="number" step="0.1" name="percentage" value="50" required></div>
+          <div class="modal-actions">
+            <button type="button" class="btn" id="modal-cancel">Annuleren</button>
+            <button type="submit" class="btn btn-primary">Voorschotfactuur maken</button>
+          </div>
+        </form>
+      `);
+      document.getElementById('modal-cancel').addEventListener('click', closeModal);
+      document.getElementById('voorschot-form-project').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const pct = parseFloat(new FormData(e.target).get('percentage')) || 0;
+        const sub = subtotaal(facturatieOfferte.regels);
+        const bedrag = +(sub * pct/100).toFixed(2);
+        const factuur = {
+          ...maakFactuurBasisProject(facturatieOfferte, 'voorschot'),
+          voorschotPercentage: pct,
+          regels: [{id:uid(), omschrijving:`Voorschot ${pct}% - ${p.omschrijving}`, aantal:1, eenheid:'stuk', prijs:bedrag}]
+        };
+        state.facturen.push(factuur);
+        await saveState();
+        closeModal();
+        showToast(`Voorschotfactuur ${factuur.id} aangemaakt`);
+        navigate('factuur-detail', {id: factuur.id});
+      });
+    });
+
+    const btnProjectEind = document.getElementById('btn-project-eind');
+    if(btnProjectEind) btnProjectEind.addEventListener('click', async ()=>{
+      const sub = subtotaal(facturatieOfferte.regels);
+      const reedsVoorschot = som(state.facturen.filter(fx=>fx.offerteId===facturatieOfferte.id && fx.type==='voorschot').map(fx=> subtotaal(fx.regels)));
+      const resterend = +Math.max(0, sub - reedsVoorschot).toFixed(2);
+      const factuur = {
+        ...maakFactuurBasisProject(facturatieOfferte, 'eind'),
+        regels: [{id:uid(), omschrijving:`Eindafrekening volgens offerte ${facturatieOfferte.id}${reedsVoorschot>0? ' (na aftrek voorschot)':''}`, aantal:1, eenheid:'stuk', prijs:resterend}]
+      };
+      state.facturen.push(factuur);
+      facturatieOfferte.status = 'Geaccepteerd';
+      p.status = 'Afgerond';
+      await saveState();
+      showToast(`Eindfactuur ${factuur.id} aangemaakt`);
+      navigate('factuur-detail', {id: factuur.id});
     });
   }
 
