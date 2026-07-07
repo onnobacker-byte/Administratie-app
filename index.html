@@ -237,6 +237,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -2533,9 +2534,8 @@ async function bepaalDoelMap(rootHandle, project, categorie){
   const typeMap = await rootHandle.getDirectoryHandle(typeMapNaam, {create:true});
   const klantMapNaam = saneerMapnaam(`${klant.id} - ${klant.naam}`);
   const klantMap = await typeMap.getDirectoryHandle(klantMapNaam, {create:true});
-  if(categorie === 'offerte-factuur'){
-    return await klantMap.getDirectoryHandle('Offertes en facturen', {create:true});
-  }
+  if(categorie === 'offerte') return await klantMap.getDirectoryHandle('Offertes', {create:true});
+  if(categorie === 'factuur') return await klantMap.getDirectoryHandle('Facturen', {create:true});
   return klantMap; // categorie 'los': voorblad en begroting direct in de klantmap
 }
 
@@ -2565,6 +2565,243 @@ async function bewaarBestand(bestandsnaam, blob, project, categorie='los'){
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
     return false;
   }
+}
+
+/* ===================== PDF-GENERATIE (naast de Word-versie) ===================== */
+function pdfBedrijfsHeaderBlocks(){
+  const i = state.instellingen;
+  const blocks = [];
+  blocks.push({t:'text', text:i.bedrijfsnaam || 'Bedrijfsnaam (in te vullen bij Instellingen)', bold:true, size:14});
+  if(i.adres) blocks.push({t:'text', text:i.adres, size:9});
+  if(i.postcode || i.plaats) blocks.push({t:'text', text:`${i.postcode||''} ${i.plaats||''}`.trim(), size:9});
+  const contact = [i.telefoon, i.email].filter(Boolean).join('   ·   ');
+  if(contact) blocks.push({t:'text', text:contact, size:9});
+  blocks.push({t:'space', h:8});
+  return blocks;
+}
+function pdfKlantAanhefBlocks(k){
+  const blocks = [];
+  blocks.push({t:'text', text: k? k.naam : '-', bold:true, size:11});
+  if(k && k.contactpersoon) blocks.push({t:'text', text:`t.a.v. ${k.contactpersoon}`, size:11});
+  if(k && k.adres) blocks.push({t:'text', text:k.adres, size:11});
+  if(k) blocks.push({t:'text', text:`${k.postcode||''} ${k.plaats||''}`.trim(), size:11});
+  blocks.push({t:'space', h:6});
+  return blocks;
+}
+function pdfKenmerkenBlocks(pairs){
+  const blocks = pairs.filter(p=>p[1]!==null).map(([l,v])=>({t:'text', text:`${l}: ${v||''}`, size:9.5}));
+  blocks.push({t:'space', h:6});
+  return blocks;
+}
+function pdfRegelBlocks(regels){
+  return regels.map(r=>({t:'tabline', left:regelTekstLinks(r), right:euro(regelTotaal(r)), size:10}));
+}
+function pdfFooterBlocks(){
+  const i = state.instellingen;
+  const delen = [];
+  if(i.iban) delen.push(`Bankrelatie: ${i.iban}`);
+  if(i.kvk) delen.push(`KVK ${i.kvk}`);
+  if(i.btwnummer) delen.push(`BTW ${i.btwnummer}`);
+  if(!delen.length) return [];
+  return [{t:'space', h:10}, {t:'text', text: delen.join('   ·   '), size:8, align:'center'}];
+}
+
+async function genereerPdf(filename, blocks, {project=null, categorie='los'}={}){
+  if(typeof window.jspdf === 'undefined'){ showToast('Pdf-bibliotheek kon niet laden, controleer je internetverbinding'); return; }
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const marginLeft = 20, marginRight = 20, pageWidth = 210, pageHeight = 297, marginBottom = 20;
+  const contentWidth = pageWidth - marginLeft - marginRight;
+  let y = 18;
+
+  const i = state.instellingen;
+  if(i.logoBase64){
+    try{
+      const mime = i.logoMime || 'image/jpeg';
+      const ext = mime.includes('png') ? 'PNG' : 'JPEG';
+      const dataUrl = `data:${mime};base64,${i.logoBase64}`;
+      const props = doc.getImageProperties(dataUrl);
+      const imgWidthMm = 38;
+      const imgHeightMm = imgWidthMm * (props.height/props.width);
+      doc.addImage(dataUrl, ext, pageWidth - marginRight - imgWidthMm, 12, imgWidthMm, imgHeightMm);
+    }catch(e){ /* logo overslaan bij fout, rest van het document gaat gewoon door */ }
+  }
+
+  function nieuwePaginaIndienNodig(extra){
+    if(y + extra > pageHeight - marginBottom){ doc.addPage(); y = 18; }
+  }
+
+  blocks.forEach(b=>{
+    if(b.t==='space'){ y += b.h; return; }
+    const size = b.size || 10;
+    const lineHeightMm = size * 0.42;
+    doc.setFont('helvetica', b.bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    if(b.t==='text'){
+      const regels = doc.splitTextToSize(b.text||'', contentWidth);
+      regels.forEach(regel=>{
+        nieuwePaginaIndienNodig(lineHeightMm+2);
+        const x = b.align==='center' ? pageWidth/2 : b.align==='right' ? pageWidth-marginRight : marginLeft;
+        doc.text(regel, x, y, {align: b.align||'left'});
+        y += lineHeightMm + 1.3;
+      });
+    } else if(b.t==='tabline'){
+      nieuwePaginaIndienNodig(lineHeightMm+2);
+      doc.text(String(b.left||''), marginLeft, y);
+      doc.text(String(b.right||''), pageWidth-marginRight, y, {align:'right'});
+      y += lineHeightMm + 1.6;
+    }
+  });
+
+  const blob = doc.output('blob');
+  const inMapOpgeslagen = await bewaarBestand(filename, blob, project, categorie);
+  showToast(inMapOpgeslagen ? `Ook als pdf opgeslagen (${filename})` : 'Ook als pdf gedownload');
+}
+
+async function exporteerOfferteNaarPdf(o){
+  const p = projectById(o.projectId);
+  const k = p ? klantById(p.klantId) : null;
+  const i = state.instellingen;
+  const t = offerteTotalen(o);
+  const behandelaar = o.behandelaar || i.ondertekenaar || '';
+  const plaats = i.plaats || '';
+
+  let blocks = [];
+  blocks.push(...pdfBedrijfsHeaderBlocks());
+  blocks.push(...pdfKlantAanhefBlocks(k));
+  blocks.push(...pdfKenmerkenBlocks([
+    ['Datum', `${plaats? plaats+', ':''}${fmtDate(o.datum)}`],
+    ['Klantnummer', k? k.id : ''],
+    ['Uw kenmerk', o.uwKenmerk || ''],
+    ['Ons offertenummer', o.id],
+    ['Betreft', p? (p.omschrijving||'') : ''],
+    ['Werknummer', p? p.id : ''],
+  ]));
+  blocks.push({t:'text', text:'Offerte', bold:true, size:18, align:'center'}, {t:'space', h:6});
+  blocks.push({t:'text', text:geachte(k), size:10}, {t:'space', h:4});
+  blocks.push({t:'text', text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:10}, {t:'space', h:6});
+
+  if(o.omschrijvingText && o.omschrijvingText.trim()){
+    blocks.push({t:'text', text:'Omschrijving werkzaamheden:', bold:true, size:10});
+    o.omschrijvingText.split('\n').forEach(regel=>{
+      if(!regel.trim()){ blocks.push({t:'space', h:2}); return; }
+      blocks.push({t:'text', text:regel.trim(), bold: !regel.trim().startsWith('-'), size:10});
+    });
+    blocks.push({t:'space', h:5});
+  }
+
+  blocks.push({t:'text', text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:10}, {t:'space', h:4});
+  blocks.push(...pdfRegelBlocks(o.regels));
+  blocks.push({t:'space', h:3});
+  blocks.push({t:'tabline', left:'Subtotaal', right:euro(t.subtotaal), size:10});
+  blocks.push({t:'tabline', left:`Btw (${o.btw}%)`, right:euro(t.btw), size:10});
+  blocks.push({t:'tabline', left:'Totaal', right:euro(t.totaal), size:12, bold:true});
+  blocks.push({t:'space', h:6});
+
+  if(i.bedrijfsnaam){
+    let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
+    if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
+    blocks.push({t:'text', text:voorwaardenTekst, size:9}, {t:'space', h:5});
+  }
+  if(i.betalingscondities && i.betalingscondities.trim()){
+    blocks.push({t:'text', text:'Betalingscondities:', bold:true, size:9});
+    i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
+      blocks.push({t:'text', text:`- ${regel.trim()}`, size:9});
+    });
+    blocks.push({t:'text', text:`- Prijzen exclusief ${o.btw}% btw.`, size:9}, {t:'space', h:5});
+  }
+  blocks.push({t:'text', text:'Werkzaamheden die niet in deze offerte zijn omschreven, zijn niet in deze prijs opgenomen.', size:9});
+  blocks.push({t:'text', text:`Deze offerte is vrijblijvend en geldig tot ${fmtDate(o.geldigTot)}.`, size:9});
+  blocks.push({t:'text', text:'Indien gewenst kunnen wij deze prijsopgave mondeling komen toelichten.', size:9}, {t:'space', h:6});
+  blocks.push({t:'text', text:'Hopende u hiermee van dienst te zijn geweest, zien wij uw opdracht met belangstelling tegemoet.', size:10}, {t:'space', h:6});
+  blocks.push({t:'text', text:'Met vriendelijke groet,', size:10});
+  if(behandelaar) blocks.push({t:'text', text:behandelaar, size:10});
+  blocks.push(...pdfFooterBlocks());
+
+  await genereerPdf(`Offerte_${o.id}.pdf`, blocks, {project:p, categorie:'offerte'});
+}
+
+async function exporteerFactuurNaarPdf(f){
+  const p = projectById(f.projectId);
+  const k = p ? klantById(p.klantId) : null;
+  const i = state.instellingen;
+  const t = factuurTotalen(f);
+  const behandelaar = f.behandelaar || i.ondertekenaar || '';
+  const plaats = i.plaats || '';
+
+  let blocks = [];
+  blocks.push(...pdfBedrijfsHeaderBlocks());
+  blocks.push(...pdfKlantAanhefBlocks(k));
+  blocks.push(...pdfKenmerkenBlocks([
+    ['Datum', `${plaats? plaats+', ':''}${fmtDate(f.datum)}`],
+    ['Uw kenmerk', f.uwKenmerk || ''],
+    ['Klantnummer', k? k.id : ''],
+    ['Ons factuurnummer', f.id],
+    ['Betreft', p? (p.omschrijving||'') : ''],
+    ['Werknummer', p? p.id : ''],
+    i.btwnummer? ['BTW-nummer', i.btwnummer] : null,
+  ].filter(Boolean)));
+  blocks.push({t:'text', text:FACTUUR_TYPE_LABEL[f.type||'standaard'], bold:true, size:18, align:'center'}, {t:'space', h:6});
+  blocks.push({t:'text', text:'Voor u uitgevoerd:', size:10}, {t:'space', h:4});
+  blocks.push(...pdfRegelBlocks(f.regels));
+  if(f.offerteId) blocks.push({t:'text', text:`Volgens offerte ${f.offerteId}`, size:9});
+  blocks.push({t:'space', h:3});
+  blocks.push({t:'tabline', left:'Subtotaal', right:euro(t.subtotaal), size:10});
+  blocks.push({t:'tabline', left:`Btw (${f.btw}%)`, right:euro(t.btw), size:10});
+  blocks.push({t:'tabline', left:'Totaalsom', right:euro(t.totaal), size:12, bold:true});
+  blocks.push({t:'space', h:6});
+  blocks.push({t:'text', text:`Gelieve dit bedrag voor ${fmtDate(f.vervaldatum)} over te maken op onderstaande bankrekening onder vermelding van factuurnummer ${f.id}.`, size:9}, {t:'space', h:6});
+  if(behandelaar){
+    blocks.push({t:'text', text:'Met vriendelijke groet,', size:10});
+    blocks.push({t:'text', text:behandelaar, size:10});
+  }
+  blocks.push(...pdfFooterBlocks());
+
+  await genereerPdf(`Factuur_${f.id}.pdf`, blocks, {project:p, categorie:'factuur'});
+}
+
+async function exporteerVoorbladNaarPdf(p){
+  const k = klantById(p.klantId);
+  const i = state.instellingen;
+  const gekoppeldeOffertes = state.offertes.filter(o=>o.projectId===p.id).sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+  const laatsteOfferte = gekoppeldeOffertes[gekoppeldeOffertes.length-1];
+  const behandelaar = (laatsteOfferte && laatsteOfferte.behandelaar) || i.ondertekenaar || '';
+  const klantkenmerk = (laatsteOfferte && laatsteOfferte.uwKenmerk) || '';
+  const gekoppeldeFacturen = state.facturen.filter(f=>f.projectId===p.id);
+  const voorschotFactuur = gekoppeldeFacturen.find(f=>f.type==='voorschot');
+  const eindFactuur = gekoppeldeFacturen.find(f=>f.type==='eind') || gekoppeldeFacturen.find(f=>f.type==='standaard');
+
+  let blocks = [];
+  blocks.push(...pdfBedrijfsHeaderBlocks());
+  blocks.push({t:'text', text:'Voorblad', size:10, align:'center'});
+  blocks.push({t:'text', text:p.id, bold:true, size:26, align:'center'}, {t:'space', h:8});
+  blocks.push(...pdfKlantAanhefBlocks(k));
+  blocks.push(...pdfKenmerkenBlocks([
+    ['Klantnummer', k? k.id : ''],
+    ['Klantkenmerk', klantkenmerk],
+    ['Behandeld door', behandelaar],
+    ['Omschrijving', p.omschrijving || ''],
+    ['Startdatum', fmtDate(p.startdatum)],
+    ['Status', p.status || ''],
+  ]));
+  blocks.push({t:'text', text:'Voortgang', bold:true, size:12}, {t:'space', h:3});
+  const checklist = [
+    ['Aanvraag', fmtDate(p.startdatum)],
+    ['Offreren', laatsteOfferte? laatsteOfferte.id : ''],
+    ['Opvolgen',''],['Bevestigen',''],['Voorbereiden',''],['Materiaal bestellen',''],
+    ['Materiaal ontvangen',''],['Montage',''],['Nacalculeren',''],
+  ];
+  checklist.forEach(([label, waarde])=>{
+    blocks.push({t:'text', text:`${waarde? '[x]':'[ ]'}  ${label}${waarde? '  -  '+waarde:''}`, size:10});
+  });
+  blocks.push({t:'space', h:5});
+  blocks.push({t:'text', text:'Facturatie', bold:true, size:12}, {t:'space', h:3});
+  blocks.push({t:'text', text:`${voorschotFactuur? '[x]':'[ ]'}  Voorschotfactuur${voorschotFactuur? '  -  nr. '+voorschotFactuur.id+(voorschotFactuur.status==='Betaald'? ' (betaald)':' (nog niet betaald)') : ''}`, size:10});
+  blocks.push({t:'text', text:`${eindFactuur? '[x]':'[ ]'}  Eindfactuur${eindFactuur? '  -  nr. '+eindFactuur.id+(eindFactuur.status==='Betaald'? ' (betaald)':' (nog niet betaald)') : ''}`, size:10});
+  blocks.push({t:'text', text:'[ ]  Resultaat / afgerond', size:10});
+  blocks.push(...pdfFooterBlocks());
+
+  await genereerPdf(`Voorblad_${p.id}.pdf`, blocks, {project:p, categorie:'los'});
 }
 
 async function genereerDocx(filename, bodyXml, {logoExt=null, logoBase64=null, project=null, categorie='los'}={}){
@@ -2672,7 +2909,8 @@ async function exporteerOfferteNaarWord(o){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'offerte-factuur'});
+  await genereerDocx(`Offerte_${o.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'offerte'});
+  await exporteerOfferteNaarPdf(o);
 }
 
 async function exporteerFactuurNaarWord(f){
@@ -2716,7 +2954,8 @@ async function exporteerFactuurNaarWord(f){
   const footer = footerRegelXml();
   if(footer) xml += footer;
 
-  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'offerte-factuur'});
+  await genereerDocx(`Factuur_${f.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'factuur'});
+  await exporteerFactuurNaarPdf(f);
 }
 
 async function exporteerVoorbladNaarWord(p){
@@ -2774,6 +3013,7 @@ async function exporteerVoorbladNaarWord(p){
   if(footer) xml += footer;
 
   await genereerDocx(`Voorblad_${p.id}.docx`, xml, {logoExt:logo.logoExt, logoBase64:logo.base64, project:p, categorie:'los'});
+  await exporteerVoorbladNaarPdf(p);
 }
 
 /* ===================== WERKNEMERS ===================== */
