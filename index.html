@@ -225,6 +225,8 @@
     <div class="nav-item" data-view="instellingen"><span class="dot"></span>Instellingen</div>
     <div class="nav-item" data-view="werknemers"><span class="dot"></span>Werknemers</div>
     <div class="nav-item" data-view="uren"><span class="dot"></span>Uren</div>
+    <div class="nav-item" data-view="materialen"><span class="dot"></span>Materialen</div>
+    <div class="nav-item" data-view="btw"><span class="dot"></span>Btw</div>
     <div class="nav-item" data-view="backup"><span class="dot"></span>Back-up</div>
     <div id="nav-vergrendel" class="nav-item" style="margin-top:auto; display:none;"><span class="dot"></span>🔒 Vergrendelen</div>
   </aside>
@@ -264,7 +266,7 @@ const DEFAULT_LOGO_BASE64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgI
 
 function defaultState(){
   return {
-    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[],
+    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[], materialen:[],
     counters:{klant:0, project:0, offerte:0, factuur:0},
     instellingen:{ uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
       bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' }
@@ -276,7 +278,7 @@ const STORAGE_KEY = 'werkplaats-administratie-data';
 async function loadState(){
   state = defaultState();
   return new Promise((resolve)=>{
-    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false};
+    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false};
     function checkKlaar(){
       if(Object.values(ontvangen).every(Boolean)) resolve();
     }
@@ -290,6 +292,11 @@ async function loadState(){
       ontvangen.werknemers = true; checkKlaar();
       if(document.getElementById('app')) render();
     }, err=> console.error('werknemers', err)));
+    onSnapshotUnsubs.push(db.collection('materialen').onSnapshot(snap=>{
+      state.materialen = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      ontvangen.materialen = true; checkKlaar();
+      if(document.getElementById('app')) render();
+    }, err=> console.error('materialen', err)));
     onSnapshotUnsubs.push(db.collection('klanten').onSnapshot(snap=>{
       state.klanten = snap.docs.map(d=>d.data());
       normaliseerState(); ontvangen.klanten = true; checkKlaar();
@@ -329,6 +336,7 @@ function normaliseerState(){
   if(!state.klanten) state.klanten = [];
   if(!state.werknemers) state.werknemers = [];
   if(!state.urenregistraties) state.urenregistraties = [];
+  if(!state.materialen) state.materialen = [];
   if(!state.counters) state.counters = {klant:0, project:0, offerte:0, factuur:0};
   if(!state.instellingen) state.instellingen = { uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
     bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' };
@@ -551,7 +559,8 @@ function render(){
   else if(currentView === 'instellingen') main.innerHTML = viewInstellingen();
   else if(currentView === 'werknemers') main.innerHTML = viewWerknemers();
   else if(currentView === 'uren') main.innerHTML = viewUren();
-  else if(currentView === 'uren') main.innerHTML = viewUren();
+  else if(currentView === 'materialen') main.innerHTML = viewMaterialen();
+  else if(currentView === 'btw') main.innerHTML = viewBtw();
   else if(currentView === 'backup') main.innerHTML = viewBackup();
   attachViewHandlers();
   toonVergrendelknopIndienNodig();
@@ -921,6 +930,7 @@ function viewProjectDetail(id){
   const begroteUren = totaal.uren;
 
   return `
+    ${materialenDatalistXml()}
     <div class="breadcrumb"><a data-nav="projecten">Projecten</a> / ${esc(p.id)}</div>
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
       <div>
@@ -1086,7 +1096,7 @@ function materiaalRegelRow(r){
   return `
     <tr data-regel-id="${r.id}">
       <td><input type="number" step="0.01" class="regel-aantal" value="${r.aantal}"></td>
-      <td><input type="text" class="regel-omschrijving" value="${esc(r.omschrijving)}" placeholder="Omschrijving"></td>
+      <td><input type="text" class="regel-omschrijving" list="materialen-datalist" value="${esc(r.omschrijving)}" placeholder="Omschrijving of kies uit lijst"></td>
       <td><input type="number" step="0.01" class="regel-prijs" value="${r.prijs}"></td>
       <td class="regel-verkoop-cel" style="text-align:right; font-variant-numeric:tabular-nums;">${euro(berekenMateriaalRegel(r).verkoop)}</td>
       <td><button class="btn-ghost btn-sm" data-del-materiaalregel="${r.id}" style="border:none; background:none; color:var(--rust); cursor:pointer;">&times;</button></td>
@@ -1475,6 +1485,16 @@ function attachViewHandlers(){
 
     function bindOnderdeelInputs(){
       main.querySelectorAll('.materiaal-regels-body input, .uren-regels-body input').forEach(el=> el.addEventListener('input', herbereken));
+      main.querySelectorAll('.materiaal-regels-body .regel-omschrijving').forEach(el=>{
+        el.addEventListener('input', (e)=>{
+          const materiaal = state.materialen.find(m=> m.naam===e.target.value);
+          if(materiaal){
+            const row = e.target.closest('tr');
+            row.querySelector('.regel-prijs').value = materiaal.prijs;
+            herbereken();
+          }
+        });
+      });
       main.querySelectorAll('[data-del-materiaalregel]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           leesAlleOnderdelenUitDOM(p);
@@ -1968,6 +1988,18 @@ function attachViewHandlers(){
     });
   }
 
+  if(currentView === 'materialen'){
+    const zoek = document.getElementById('materiaal-zoek');
+    zoek.addEventListener('input', (e)=>{ materiaalZoek = e.target.value; render(); zoek_focus(); });
+    document.getElementById('btn-nieuw-materiaal').addEventListener('click', ()=> openMateriaalModal());
+    main.querySelectorAll('[data-edit-materiaal]').forEach(btn=>{
+      btn.addEventListener('click', ()=> openMateriaalModal(btn.dataset.editMateriaal));
+    });
+    main.querySelectorAll('[data-del-materiaal]').forEach(btn=>{
+      btn.addEventListener('click', ()=> verwijderMateriaal(btn.dataset.delMateriaal));
+    });
+  }
+
   if(currentView === 'backup'){
     document.getElementById('btn-backup-download').addEventListener('click', ()=>{
       exporteerBackup();
@@ -1988,7 +2020,7 @@ function attachViewHandlers(){
 }
 
 function zoek_focus(){
-  const el = document.getElementById('klant-zoek') || document.getElementById('project-zoek');
+  const el = document.getElementById('klant-zoek') || document.getElementById('project-zoek') || document.getElementById('materiaal-zoek');
   if(el){ el.focus(); const v = el.value; el.value=''; el.value=v; }
 }
 
@@ -2756,6 +2788,93 @@ async function maakWerknemerAccount(naam, wachtwoord){
   return uid;
 }
 
+/* ===================== MATERIALEN (catalogus) ===================== */
+let materiaalZoek = '';
+function viewMaterialen(){
+  const q = materiaalZoek.toLowerCase();
+  const lijst = [...state.materialen]
+    .filter(m=> !q || (m.naam||'').toLowerCase().includes(q))
+    .sort((a,b)=> (a.naam||'').localeCompare(b.naam||''));
+  return `
+    <h1 class="page-title">Materialen</h1>
+    <p class="page-sub">Een vaste prijslijst — kies een materiaal in de begroting en de prijs wordt automatisch ingevuld.</p>
+
+    <div class="toolbar">
+      <input class="search-input" id="materiaal-zoek" placeholder="Zoek op naam..." value="${esc(materiaalZoek)}">
+      <button class="btn btn-primary" id="btn-nieuw-materiaal">+ Nieuw materiaal</button>
+    </div>
+
+    <div class="panel">
+      <table>
+        <thead><tr><th>Naam</th><th>Eenheid</th><th style="text-align:right;">Prijs (inkoop)</th><th></th></tr></thead>
+        <tbody>
+          ${lijst.length ? lijst.map(m=>`
+            <tr>
+              <td>${esc(m.naam)}</td>
+              <td>${esc(m.eenheid||'-')}</td>
+              <td style="text-align:right;">${euro(m.prijs)}</td>
+              <td>
+                <div class="row-actions" style="opacity:1;">
+                  <button class="btn btn-ghost btn-sm" data-edit-materiaal="${m.id}">Bewerken</button>
+                  <button class="btn btn-ghost btn-sm btn-danger" data-del-materiaal="${m.id}">Verwijderen</button>
+                </div>
+              </td>
+            </tr>
+          `).join('') : `<tr><td colspan="4"><div class="empty-state"><div class="title">Nog geen materialen</div>Voeg veelgebruikte materialen met hun inkoopprijs toe, zodat je die snel kunt kiezen in de begroting.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function materiaalForm(materiaal){
+  const m = materiaal || {naam:'', eenheid:'', prijs:0};
+  return `
+    <h2>${materiaal ? 'Materiaal bewerken' : 'Nieuw materiaal'}</h2>
+    <form id="materiaal-form">
+      <div class="field"><label>Naam</label><input type="text" name="naam" required value="${esc(m.naam)}" placeholder="Bijv. Berken multiplex 18mm"></div>
+      <div class="field-row">
+        <div class="field"><label>Eenheid (optioneel)</label><input type="text" name="eenheid" value="${esc(m.eenheid||'')}" placeholder="Bijv. m2, stuk, m1"></div>
+        <div class="field"><label>Prijs (inkoop)</label><input type="number" step="0.01" name="prijs" required value="${m.prijs}"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="modal-cancel">Annuleren</button>
+        <button type="submit" class="btn btn-primary">${materiaal ? 'Opslaan' : 'Materiaal toevoegen'}</button>
+      </div>
+    </form>
+  `;
+}
+
+function openMateriaalModal(materiaalId){
+  const materiaal = materiaalId ? state.materialen.find(m=>m.id===materiaalId) : null;
+  openModal(materiaalForm(materiaal));
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('materiaal-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = { naam: fd.get('naam').trim(), eenheid: fd.get('eenheid').trim(), prijs: parseFloat(fd.get('prijs'))||0 };
+    try{
+      if(materiaal){
+        await db.collection('materialen').doc(materiaal.id).update(data);
+      } else {
+        await db.collection('materialen').add(data);
+      }
+      closeModal();
+      showToast(materiaal ? 'Materiaal bijgewerkt' : 'Materiaal toegevoegd');
+    }catch(err){ showToast('Opslaan mislukt: ' + err.message); }
+  });
+}
+
+async function verwijderMateriaal(id){
+  if(!confirm('Dit materiaal uit de lijst verwijderen?')) return;
+  try{ await db.collection('materialen').doc(id).delete(); showToast('Materiaal verwijderd'); }
+  catch(err){ showToast('Verwijderen mislukt: ' + err.message); }
+}
+
+function materialenDatalistXml(){
+  return `<datalist id="materialen-datalist">${state.materialen.map(m=>`<option value="${esc(m.naam)}" data-prijs="${m.prijs}"></option>`).join('')}</datalist>`;
+}
+
 /* ===================== UREN (overzicht) ===================== */
 const GEEN_PROJECT_ID = 'V0000';
 let urenWerknemerFilter = '';
@@ -2813,6 +2932,70 @@ function viewUren(){
               <td>${esc(u.opmerking||'')}</td>
             </tr>`;
           }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="title">Nog geen uren geregistreerd</div>Zodra werknemers uren invoeren via de urenregistratie-app, verschijnen die hier.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ===================== BTW (per kwartaal) ===================== */
+function kwartaalVanDatum(datumStr){
+  if(!datumStr) return null;
+  const d = new Date(datumStr);
+  if(isNaN(d)) return null;
+  const jaar = d.getFullYear();
+  const kwartaal = Math.floor(d.getMonth()/3) + 1;
+  return {jaar, kwartaal, key:`${jaar}-Q${kwartaal}`};
+}
+function viewBtw(){
+  const groepen = {};
+  state.facturen.forEach(f=>{
+    const kw = kwartaalVanDatum(f.datum);
+    if(!kw) return;
+    if(!groepen[kw.key]) groepen[kw.key] = {jaar:kw.jaar, kwartaal:kw.kwartaal, omzet:0, btw:0, totaal:0, aantal:0};
+    const t = factuurTotalen(f);
+    groepen[kw.key].omzet += t.subtotaal;
+    groepen[kw.key].btw += t.btw;
+    groepen[kw.key].totaal += t.totaal;
+    groepen[kw.key].aantal += 1;
+  });
+  const lijst = Object.values(groepen).sort((a,b)=> b.jaar-a.jaar || b.kwartaal-a.kwartaal);
+  const huidig = kwartaalVanDatum(todayISO());
+  const huidigeGroep = huidig ? groepen[huidig.key] : null;
+
+  return `
+    <h1 class="page-title">Btw</h1>
+    <p class="page-sub">Btw over verzonden facturen, per kwartaal — op basis van de factuurdatum (factuurstelsel). Let op: dit is exclusief eventuele aftrekbare btw over inkopen; controleer dit altijd met je boekhouder of de Belastingdienst.</p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">Huidig kwartaal (${huidig? 'Q'+huidig.kwartaal+' '+huidig.jaar : '-'})</div>
+        <div class="value">${euro(huidigeGroep? huidigeGroep.btw : 0)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Omzet dit kwartaal (excl. btw)</div>
+        <div class="value">${euro(huidigeGroep? huidigeGroep.omzet : 0)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Aantal facturen dit kwartaal</div>
+        <div class="value">${huidigeGroep? huidigeGroep.aantal : 0}</div>
+      </div>
+    </div>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Per kwartaal</h2>
+    <div class="panel">
+      <table>
+        <thead><tr><th>Kwartaal</th><th style="text-align:right;">Omzet excl. btw</th><th style="text-align:right;">Btw</th><th style="text-align:right;">Omzet incl. btw</th><th style="text-align:right;">Aantal facturen</th></tr></thead>
+        <tbody>
+          ${lijst.length ? lijst.map(g=>`
+            <tr ${huidig && g.jaar===huidig.jaar && g.kwartaal===huidig.kwartaal ? 'style="font-weight:600;"' : ''}>
+              <td>Q${g.kwartaal} ${g.jaar}${huidig && g.jaar===huidig.jaar && g.kwartaal===huidig.kwartaal ? ' (huidig)' : ''}</td>
+              <td style="text-align:right;">${euro(g.omzet)}</td>
+              <td style="text-align:right;">${euro(g.btw)}</td>
+              <td style="text-align:right;">${euro(g.totaal)}</td>
+              <td style="text-align:right;">${g.aantal}</td>
+            </tr>
+          `).join('') : `<tr><td colspan="5"><div class="empty-state"><div class="title">Nog geen facturen</div>Zodra je facturen aanmaakt, verschijnt hier het btw-overzicht per kwartaal.</div></td></tr>`}
         </tbody>
       </table>
     </div>
