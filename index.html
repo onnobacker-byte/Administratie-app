@@ -2099,6 +2099,26 @@ function attachViewHandlers(){
       if(!input.files || !input.files[0]){ showToast('Kies eerst een back-upbestand'); return; }
       await herstelBackup(input.files[0]);
     });
+    const resetInput = document.getElementById('reset-bevestig');
+    const resetBtn = document.getElementById('btn-reset-alles');
+    resetInput.addEventListener('input', ()=>{
+      resetBtn.disabled = resetInput.value.trim() !== 'VERWIJDEREN';
+    });
+    resetBtn.addEventListener('click', async ()=>{
+      if(resetInput.value.trim() !== 'VERWIJDEREN') return;
+      if(!confirm('Weet je het zeker? Alle klanten, projecten, offertes, facturen, materialen en urenregistraties worden definitief verwijderd. Dit kan niet ongedaan gemaakt worden.')) return;
+      resetBtn.disabled = true;
+      resetBtn.textContent = 'Bezig met wissen...';
+      try{
+        await resetAlleTestData();
+        showToast('Alle gegevens zijn gewist');
+        navigate('dashboard');
+      }catch(err){
+        showToast('Wissen mislukt: ' + err.message);
+        resetBtn.disabled = false;
+        resetBtn.textContent = 'Alle gegevens definitief wissen';
+      }
+    });
   }
 
   if(currentView === 'dashboard'){
@@ -2203,11 +2223,11 @@ function viewBackup(){
   const laatste = state.instellingen.laatsteBackup ? new Date(state.instellingen.laatsteBackup) : null;
   return `
     <h1 class="page-title">Back-up &amp; herstel</h1>
-    <p class="page-sub">Al je gegevens staan alleen lokaal in deze browser. Maak regelmatig een back-up.</p>
+    <p class="page-sub">Je gegevens staan veilig in de cloud (Firebase) en zijn overal beschikbaar waar je inlogt. Maak daarnaast toch af en toe een lokale back-up, voor de zekerheid.</p>
 
     <div class="panel" style="padding:22px; max-width:520px; margin-bottom:20px;">
-      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px;">Waarom een back-up belangrijk is</h3>
-      <p class="info-line" style="margin-bottom:0;">Je klant-, project-, offerte- en factuurgegevens worden alleen bewaard in de browser van dit apparaat. Er is geen automatische back-up. Wis je je browsergegevens, gebruik je een andere computer, of gaat er iets mis, dan ben je zonder back-up je gegevens kwijt.</p>
+      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px;">Waarom een back-up toch handig is</h3>
+      <p class="info-line" style="margin-bottom:0;">Je klant-, project-, offerte- en factuurgegevens staan in de cloud en syncen automatisch tussen je apparaten. Een lokale back-up is een extra vangnet, bijvoorbeeld tegen een eigen vergissing (per ongeluk iets verwijderen).</p>
     </div>
 
     <div class="panel" style="padding:22px; max-width:520px; margin-bottom:20px;">
@@ -2216,11 +2236,21 @@ function viewBackup(){
       <button class="btn btn-primary" id="btn-backup-download">Back-up downloaden (.json)</button>
     </div>
 
-    <div class="panel" style="padding:22px; max-width:520px;">
+    <div class="panel" style="padding:22px; max-width:520px; margin-bottom:20px;">
       <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px;">Back-up herstellen</h3>
-      <p class="info-line" style="margin-bottom:14px;">Let op: dit vervangt alle huidige gegevens in deze browser door de gegevens uit het gekozen bestand.</p>
+      <p class="info-line" style="margin-bottom:14px;">Let op: dit vervangt alle huidige gegevens door de gegevens uit het gekozen bestand.</p>
       <input type="file" id="backup-bestand" accept="application/json,.json" style="margin-bottom:12px; display:block;">
       <button class="btn btn-danger" id="btn-backup-herstellen">Back-up herstellen</button>
+    </div>
+
+    <div class="panel" style="padding:22px; max-width:520px; border-color:var(--rust);">
+      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px; color:var(--rust);">Gevarenzone: alles wissen</h3>
+      <p class="info-line" style="margin-bottom:14px;">Verwijdert alle klanten, projecten, offertes, facturen, materialen en urenregistraties definitief — bijvoorbeeld om test-gegevens weg te halen vóór een echte start. Werknemersaccounts en je instellingen blijven staan. <b>Dit kan niet ongedaan gemaakt worden.</b></p>
+      <div class="field" style="margin-bottom:10px;">
+        <label>Typ ter bevestiging exact: <b>VERWIJDEREN</b></label>
+        <input type="text" id="reset-bevestig" placeholder="VERWIJDEREN">
+      </div>
+      <button class="btn btn-danger" id="btn-reset-alles" disabled>Alle gegevens definitief wissen</button>
     </div>
   `;
 }
@@ -3528,6 +3558,22 @@ async function herstelBackup(file){
   showToast('Back-up hersteld');
   stelFaviconIn();
   navigate('dashboard', {});
+}
+
+async function resetAlleTestData(){
+  const verwijderopdrachten = [];
+  state.klanten.forEach(k=> verwijderopdrachten.push(db.collection('klanten').doc(k.id).delete()));
+  state.projecten.forEach(p=> verwijderopdrachten.push(db.collection('projecten').doc(p.id).delete()));
+  state.offertes.forEach(o=> verwijderopdrachten.push(db.collection('offertes').doc(o.id).delete()));
+  state.facturen.forEach(f=> verwijderopdrachten.push(db.collection('facturen').doc(f.id).delete()));
+  state.materialen.forEach(m=> verwijderopdrachten.push(db.collection('materialen').doc(m.id).delete()));
+  state.urenregistraties.forEach(u=> verwijderopdrachten.push(db.collection('urenregistraties').doc(u.id).delete()));
+  await Promise.all(verwijderopdrachten);
+
+  state.klanten = []; state.projecten = []; state.offertes = []; state.facturen = [];
+  state.materialen = []; state.urenregistraties = [];
+  state.counters = {klant:0, project:0, offerte:0, factuur:0};
+  await db.collection('meta').doc('counters').set(state.counters);
 }
 
 function toonVergrendelknopIndienNodig(){
