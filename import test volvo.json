@@ -1,0 +1,61 @@
+{
+  "klanten": [
+    {
+      "id": "K2763",
+      "type": "Bedrijf",
+      "naam": "Volvo Group Truck Center",
+      "contactpersoon": "",
+      "adres": "Postbus 54018",
+      "postcode": "3008 JA",
+      "plaats": "Rotterdam",
+      "telefoon": "",
+      "email": "",
+      "notities": ""
+    }
+  ],
+  "projecten": [
+    {
+      "id": "P18221",
+      "klantId": "K2763",
+      "omschrijving": "BEDOMBOUW FMB",
+      "status": "Afgerond",
+      "startdatum": "",
+      "begroting": { "onderdelen": [] }
+    },
+    {
+      "id": "P18360",
+      "klantId": "K2763",
+      "omschrijving": "BEDOMBOUW FMB",
+      "status": "Afgerond",
+      "startdatum": "",
+      "begroting": { "onderdelen": [] }
+    }
+  ],
+  "offertes": [],
+  "facturen": [
+    {
+      "id": "F68181",
+      "projectId": "P18221",
+      "type": "standaard",
+      "status": "Open",
+      "datum": "",
+      "vervaldatum": "",
+      "btw": 21,
+      "uwKenmerk": "",
+      "behandelaar": "",
+      "regels": []
+    },
+    {
+      "id": "F68342",
+      "projectId": "P18360",
+      "type": "standaard",
+      "status": "Open",
+      "datum": "",
+      "vervaldatum": "",
+      "btw": 21,
+      "uwKenmerk": "",
+      "behandelaar": "",
+      "regels": []
+    }
+  ]
+}
