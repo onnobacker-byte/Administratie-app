@@ -67,6 +67,9 @@
 .section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 14px;}
 .kalender-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
 .kalender-header h2{font-size:16px; text-transform:capitalize;}
+.kalender-toggle{display:flex; gap:6px; margin-bottom:14px;}
+.kalender-toggle-btn{flex:1; text-align:center; opacity:0.55;}
+.kalender-toggle-btn.actief{opacity:1; background:var(--copper-bg); border-color:var(--copper); color:var(--copper-dark); font-weight:700;}
 .kalender-table{width:100%; border-collapse:collapse; table-layout:fixed;}
 .kalender-table th{font-size:10.5px; color:var(--text-muted); font-weight:600; padding:4px 2px; text-align:center;}
 .kalender-table td{text-align:center; padding:0; height:44px; vertical-align:middle;}
@@ -150,6 +153,10 @@
     </div>
 
     <div class="panel" id="kalender-panel">
+      <div class="kalender-toggle">
+        <button class="btn btn-sm kalender-toggle-btn actief" id="kalender-modus-maand" type="button">Maand</button>
+        <button class="btn btn-sm kalender-toggle-btn" id="kalender-modus-week" type="button">Week</button>
+      </div>
       <div class="kalender-header">
         <button class="btn btn-ghost btn-sm" id="kalender-vorige" type="button">&lsaquo;</button>
         <h2 id="kalender-titel" style="margin:0;"></h2>
@@ -194,6 +201,15 @@ const vandaag = new Date();
 let kalenderJaar = vandaag.getFullYear();
 let kalenderMaandIdx = vandaag.getMonth(); // 0-11
 let geselecteerdeDag = todayISO();
+let kalenderWeergave = 'maand'; // 'maand' | 'week'
+function maandagVanWeek(datum){
+  const d = new Date(datum);
+  const dagNr = (d.getDay()+6)%7; // 0 = maandag
+  d.setDate(d.getDate()-dagNr);
+  d.setHours(0,0,0,0);
+  return d;
+}
+let kalenderWeekStart = maandagVanWeek(vandaag);
 
 const GEEN_PROJECT = 'V0000';
 const WERKZAAMHEDEN = [
@@ -500,7 +516,20 @@ function urenPerDag(){
   return map;
 }
 
+function bouwDagCelHtml(iso, dagNummer, urenMap, vandaagIso){
+  const klassen = ['kalender-dag'];
+  if(iso===vandaagIso) klassen.push('vandaag');
+  if(iso===geselecteerdeDag) klassen.push('geselecteerd');
+  const urenVandaag = urenMap[iso];
+  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNummer}${urenVandaag? `<div class="uren-stip">${urenVandaag}u</div>` : ''}</div></td>`;
+}
+
 function renderKalender(){
+  if(kalenderWeergave === 'week') renderKalenderWeek();
+  else renderKalenderMaand();
+}
+
+function renderKalenderMaand(){
   document.getElementById('kalender-titel').textContent = `${MAAND_NAMEN[kalenderMaandIdx]} ${kalenderJaar}`;
   const eersteVanMaand = new Date(kalenderJaar, kalenderMaandIdx, 1);
   const laatsteVanMaand = new Date(kalenderJaar, kalenderMaandIdx+1, 0);
@@ -525,25 +554,44 @@ function renderKalender(){
     weekCellen.forEach(dag=>{
       if(dag===null){ html += `<td></td>`; return; }
       const iso = datumIso(kalenderJaar, kalenderMaandIdx, dag);
-      const klassen = ['kalender-dag'];
-      if(iso===vandaagIso) klassen.push('vandaag');
-      if(iso===geselecteerdeDag) klassen.push('geselecteerd');
-      const urenVandaag = urenMap[iso];
-      html += `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dag}${urenVandaag? `<div class="uren-stip">${urenVandaag}u</div>` : ''}</div></td>`;
+      html += bouwDagCelHtml(iso, dag, urenMap, vandaagIso);
     });
     html += `</tr>`;
   }
   document.getElementById('kalender-body').innerHTML = html;
+  koppelDagKlikHandlers();
+  renderDagDetail();
+}
 
+function renderKalenderWeek(){
+  const wkNr = isoWeekNummer(kalenderWeekStart);
+  const weekEind = new Date(kalenderWeekStart);
+  weekEind.setDate(weekEind.getDate()+6);
+  const fmt = (d)=> d.toLocaleDateString('nl-NL', {day:'numeric', month: d.getMonth()===weekEind.getMonth()? undefined : 'short'});
+  document.getElementById('kalender-titel').textContent = `Week ${wkNr} · ${fmt(kalenderWeekStart)} - ${weekEind.toLocaleDateString('nl-NL',{day:'numeric', month:'short'})}`;
+
+  const urenMap = urenPerDag();
+  const vandaagIso = todayISO();
+  let html = `<tr><td class="kalender-wk">${wkNr}</td>`;
+  for(let i=0;i<7;i++){
+    const d = new Date(kalenderWeekStart);
+    d.setDate(d.getDate()+i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    html += bouwDagCelHtml(iso, d.getDate(), urenMap, vandaagIso);
+  }
+  html += `</tr>`;
+  document.getElementById('kalender-body').innerHTML = html;
+  koppelDagKlikHandlers();
+  renderDagDetail();
+}
+
+function koppelDagKlikHandlers(){
   document.querySelectorAll('.kalender-dag').forEach(el=>{
     el.addEventListener('click', ()=>{
       geselecteerdeDag = el.dataset.dag;
       renderKalender();
-      renderDagDetail();
     });
   });
-
-  renderDagDetail();
 }
 
 function renderDagDetail(){
@@ -573,13 +621,34 @@ function renderDagDetail(){
 }
 
 document.getElementById('kalender-vorige').addEventListener('click', ()=>{
-  kalenderMaandIdx--;
-  if(kalenderMaandIdx<0){ kalenderMaandIdx=11; kalenderJaar--; }
+  if(kalenderWeergave==='week'){
+    kalenderWeekStart.setDate(kalenderWeekStart.getDate()-7);
+  } else {
+    kalenderMaandIdx--;
+    if(kalenderMaandIdx<0){ kalenderMaandIdx=11; kalenderJaar--; }
+  }
   renderKalender();
 });
 document.getElementById('kalender-volgende').addEventListener('click', ()=>{
-  kalenderMaandIdx++;
-  if(kalenderMaandIdx>11){ kalenderMaandIdx=0; kalenderJaar++; }
+  if(kalenderWeergave==='week'){
+    kalenderWeekStart.setDate(kalenderWeekStart.getDate()+7);
+  } else {
+    kalenderMaandIdx++;
+    if(kalenderMaandIdx>11){ kalenderMaandIdx=0; kalenderJaar++; }
+  }
+  renderKalender();
+});
+document.getElementById('kalender-modus-maand').addEventListener('click', ()=>{
+  kalenderWeergave = 'maand';
+  document.getElementById('kalender-modus-maand').classList.add('actief');
+  document.getElementById('kalender-modus-week').classList.remove('actief');
+  renderKalender();
+});
+document.getElementById('kalender-modus-week').addEventListener('click', ()=>{
+  kalenderWeergave = 'week';
+  kalenderWeekStart = maandagVanWeek(new Date(geselecteerdeDag+'T00:00:00'));
+  document.getElementById('kalender-modus-week').classList.add('actief');
+  document.getElementById('kalender-modus-maand').classList.remove('actief');
   renderKalender();
 });
 </script>
