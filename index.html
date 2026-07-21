@@ -2094,6 +2094,11 @@ function attachViewHandlers(){
       exporteerBackup();
       render();
     });
+    document.getElementById('btn-import-gegevens').addEventListener('click', async ()=>{
+      const input = document.getElementById('import-bestand');
+      if(!input.files || !input.files[0]){ showToast('Kies eerst een importbestand'); return; }
+      await importeerGegevens(input.files[0]);
+    });
     document.getElementById('btn-backup-herstellen').addEventListener('click', async ()=>{
       const input = document.getElementById('backup-bestand');
       if(!input.files || !input.files[0]){ showToast('Kies eerst een back-upbestand'); return; }
@@ -2234,6 +2239,13 @@ function viewBackup(){
       <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px;">Back-up downloaden</h3>
       <p class="info-line" style="margin-bottom:14px;">${laatste ? `Laatste back-up: <b>${fmtDate(state.instellingen.laatsteBackup)} ${laatste.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</b>` : 'Nog geen back-up gemaakt.'}</p>
       <button class="btn btn-primary" id="btn-backup-download">Back-up downloaden (.json)</button>
+    </div>
+
+    <div class="panel" style="padding:22px; max-width:520px; margin-bottom:20px;">
+      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px;">Klanten &amp; projecten importeren</h3>
+      <p class="info-line" style="margin-bottom:14px;">Voegt klanten, projecten, offertes en facturen uit een importbestand toe aan je bestaande gegevens (overschrijft niets anders — instellingen en werknemers blijven ongemoeid). Handig om oude klanten in één keer over te zetten.</p>
+      <input type="file" id="import-bestand" accept="application/json,.json" style="margin-bottom:12px; display:block;">
+      <button class="btn btn-primary" id="btn-import-gegevens">Importeren</button>
     </div>
 
     <div class="panel" style="padding:22px; max-width:520px; margin-bottom:20px;">
@@ -3524,6 +3536,41 @@ function exporteerBackup(){
   state.instellingen.laatsteBackup = new Date().toISOString();
   saveState();
   showToast('Back-up gedownload');
+}
+
+async function importeerGegevens(file){
+  let data;
+  try{
+    const tekst = await leesBestandAlsTekst(file);
+    data = JSON.parse(tekst);
+  }catch(e){
+    showToast('Dit bestand kon niet worden gelezen');
+    return;
+  }
+  if(!data || typeof data !== 'object'){
+    showToast('Dit lijkt geen geldig importbestand te zijn');
+    return;
+  }
+  const klanten = Array.isArray(data.klanten) ? data.klanten : [];
+  const projecten = Array.isArray(data.projecten) ? data.projecten : [];
+  const offertes = Array.isArray(data.offertes) ? data.offertes : [];
+  const facturen = Array.isArray(data.facturen) ? data.facturen : [];
+  const totaal = klanten.length + projecten.length + offertes.length + facturen.length;
+  if(!totaal){ showToast('Geen klanten, projecten, offertes of facturen gevonden in dit bestand'); return; }
+  if(!confirm(`${klanten.length} klant(en), ${projecten.length} project(en), ${offertes.length} offerte(s) en ${facturen.length} factu(u)r(en) toevoegen aan je bestaande gegevens?`)) return;
+
+  try{
+    const schrijfopdrachten = [];
+    klanten.forEach(k=>{ schrijfopdrachten.push(db.collection('klanten').doc(k.id).set(k, {merge:true})); });
+    projecten.forEach(p=>{ schrijfopdrachten.push(db.collection('projecten').doc(p.id).set(p, {merge:true})); });
+    offertes.forEach(o=>{ schrijfopdrachten.push(db.collection('offertes').doc(o.id).set(o, {merge:true})); });
+    facturen.forEach(f=>{ schrijfopdrachten.push(db.collection('facturen').doc(f.id).set(f, {merge:true})); });
+    await Promise.all(schrijfopdrachten);
+    showToast(`Import voltooid: ${totaal} record(en) toegevoegd`);
+    render();
+  }catch(e){
+    showToast('Importeren mislukt: ' + e.message);
+  }
 }
 
 async function herstelBackup(file){
