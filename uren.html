@@ -65,6 +65,21 @@
 .timer-sinds{text-align:center; font-size:12.5px; color:var(--text-muted); margin-bottom:14px;}
 .btn-stop{background:var(--rust-bg); border-color:var(--rust); color:var(--rust);}
 .section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 14px;}
+.kalender-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+.kalender-header h2{font-size:16px; text-transform:capitalize;}
+.kalender-table{width:100%; border-collapse:collapse; table-layout:fixed;}
+.kalender-table th{font-size:10.5px; color:var(--text-muted); font-weight:600; padding:4px 2px; text-align:center;}
+.kalender-table td{text-align:center; padding:0; height:44px; vertical-align:middle;}
+.kalender-wk{font-size:10px; color:var(--text-muted);}
+.kalender-dag{width:34px; height:34px; margin:0 auto; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; border:1px solid transparent; font-size:12.5px; color:var(--text);}
+.kalender-dag:hover{border-color:var(--copper);}
+.kalender-dag.buiten-maand{color:var(--border); cursor:default;}
+.kalender-dag.buiten-maand:hover{border-color:transparent;}
+.kalender-dag.vandaag{border-color:var(--copper); font-weight:700;}
+.kalender-dag.geselecteerd{background:var(--copper); color:#fff;}
+.kalender-dag .uren-stip{font-size:8.5px; margin-top:1px; color:var(--sage); font-weight:600;}
+.kalender-dag.geselecteerd .uren-stip{color:#fff;}
+.kalender-dag-detail{margin-top:14px; border-top:1px solid var(--border); padding-top:12px;}
 </style>
 </head>
 <body>
@@ -134,6 +149,19 @@
       </form>
     </div>
 
+    <div class="panel" id="kalender-panel">
+      <div class="kalender-header">
+        <button class="btn btn-ghost btn-sm" id="kalender-vorige" type="button">&lsaquo;</button>
+        <h2 id="kalender-titel" style="margin:0;"></h2>
+        <button class="btn btn-ghost btn-sm" id="kalender-volgende" type="button">&rsaquo;</button>
+      </div>
+      <table class="kalender-table">
+        <thead><tr><th>Wk</th><th>Ma</th><th>Di</th><th>Wo</th><th>Do</th><th>Vr</th><th>Za</th><th>Zo</th></tr></thead>
+        <tbody id="kalender-body"></tbody>
+      </table>
+      <div id="kalender-dag-detail"></div>
+    </div>
+
     <div class="panel">
       <h2>Mijn registraties (laatste 20)</h2>
       <div id="registraties-lijst"><div class="empty">Nog geen registraties</div></div>
@@ -161,6 +189,11 @@ const db = firebase.firestore();
 const WERKNEMER_EMAIL_DOMEIN = 'werknemer.intern';
 
 let huidigeUid = null;
+let alleRegistraties = [];
+const vandaag = new Date();
+let kalenderJaar = vandaag.getFullYear();
+let kalenderMaandIdx = vandaag.getMonth(); // 0-11
+let geselecteerdeDag = todayISO();
 
 const GEEN_PROJECT = 'V0000';
 const WERKZAAMHEDEN = [
@@ -286,10 +319,10 @@ auth.onAuthStateChanged(async (user)=>{
   registratiesUnsub = db.collection('urenregistraties')
     .where('werknemerId','==', user.uid)
     .onSnapshot(snap=>{
-      const lijst = snap.docs.map(d=>({id:d.id, ...d.data()}))
-        .sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''))
-        .slice(0,20);
-      renderRegistraties(lijst);
+      alleRegistraties = snap.docs.map(d=>({id:d.id, ...d.data()}))
+        .sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''));
+      renderRegistraties(alleRegistraties.slice(0,20));
+      renderKalender();
     }, err=> console.error(err));
 });
 
@@ -440,6 +473,114 @@ document.getElementById('btn-timer-stop').addEventListener('click', async ()=>{
   }catch(err){
     foutEl.textContent = 'Registreren mislukt: ' + err.message;
   }
+});
+
+/* ===================== KALENDER (weeknummers, maandweergave, dagdetail) ===================== */
+const MAAND_NAMEN = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+
+function isoWeekNummer(datum){
+  const d = new Date(Date.UTC(datum.getFullYear(), datum.getMonth(), datum.getDate()));
+  const dagNr = (d.getUTCDay() + 6) % 7; // maandag=0
+  d.setUTCDate(d.getUTCDate() - dagNr + 3);
+  const eersteDonderdag = new Date(Date.UTC(d.getUTCFullYear(),0,4));
+  const diffDagen = (d - eersteDonderdag) / 86400000;
+  return 1 + Math.round(diffDagen/7);
+}
+function datumIso(jaar, maandIdx, dag){
+  const mm = String(maandIdx+1).padStart(2,'0');
+  const dd = String(dag).padStart(2,'0');
+  return `${jaar}-${mm}-${dd}`;
+}
+function urenPerDag(){
+  const map = {};
+  alleRegistraties.forEach(r=>{
+    if(!r.datum) return;
+    map[r.datum] = (map[r.datum]||0) + (r.uren||0);
+  });
+  return map;
+}
+
+function renderKalender(){
+  document.getElementById('kalender-titel').textContent = `${MAAND_NAMEN[kalenderMaandIdx]} ${kalenderJaar}`;
+  const eersteVanMaand = new Date(kalenderJaar, kalenderMaandIdx, 1);
+  const laatsteVanMaand = new Date(kalenderJaar, kalenderMaandIdx+1, 0);
+  const totaalDagenMaand = laatsteVanMaand.getDate();
+
+  // Maandag als eerste dag van de week bepalen
+  let startOffset = (eersteVanMaand.getDay()+6)%7; // 0 = maandag
+  const cellen = [];
+  for(let i=0;i<startOffset;i++) cellen.push(null);
+  for(let dag=1; dag<=totaalDagenMaand; dag++) cellen.push(dag);
+  while(cellen.length % 7 !== 0) cellen.push(null);
+
+  const urenMap = urenPerDag();
+  const vandaagIso = todayISO();
+
+  let html = '';
+  for(let w=0; w<cellen.length/7; w++){
+    const weekCellen = cellen.slice(w*7, w*7+7);
+    const eersteEchteDag = weekCellen.find(d=>d!==null);
+    const wkNr = eersteEchteDag ? isoWeekNummer(new Date(kalenderJaar, kalenderMaandIdx, eersteEchteDag)) : '';
+    html += `<tr><td class="kalender-wk">${wkNr}</td>`;
+    weekCellen.forEach(dag=>{
+      if(dag===null){ html += `<td></td>`; return; }
+      const iso = datumIso(kalenderJaar, kalenderMaandIdx, dag);
+      const klassen = ['kalender-dag'];
+      if(iso===vandaagIso) klassen.push('vandaag');
+      if(iso===geselecteerdeDag) klassen.push('geselecteerd');
+      const urenVandaag = urenMap[iso];
+      html += `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dag}${urenVandaag? `<div class="uren-stip">${urenVandaag}u</div>` : ''}</div></td>`;
+    });
+    html += `</tr>`;
+  }
+  document.getElementById('kalender-body').innerHTML = html;
+
+  document.querySelectorAll('.kalender-dag').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      geselecteerdeDag = el.dataset.dag;
+      renderKalender();
+      renderDagDetail();
+    });
+  });
+
+  renderDagDetail();
+}
+
+function renderDagDetail(){
+  const el = document.getElementById('kalender-dag-detail');
+  const dagRegs = alleRegistraties.filter(r=>r.datum===geselecteerdeDag);
+  const datumObj = new Date(geselecteerdeDag+'T00:00:00');
+  const titel = datumObj.toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'});
+  if(!dagRegs.length){
+    el.innerHTML = `<div class="section-label" style="text-transform:capitalize;">${titel}</div><div class="empty">Geen registraties op deze dag</div>`;
+    return;
+  }
+  const totaalUren = dagRegs.reduce((s,r)=>s+(r.uren||0),0);
+  el.innerHTML = `
+    <div class="section-label" style="text-transform:capitalize;">${titel} &middot; ${totaalUren} u totaal</div>
+    ${dagRegs.map(r=>{
+      const project = projecten.find(p=>p.id===r.projectId);
+      const omschrijving = r.projectId===GEEN_PROJECT ? 'Geen project' : (project? project.omschrijving : '');
+      return `<div class="entry">
+        <div>
+          <span class="tag">${esc(r.projectId)}</span> ${esc(omschrijving)}
+          <div class="meta">${esc(r.type)} &middot; ${esc(r.startTijd)}&ndash;${esc(r.eindTijd)}${r.opmerking? ' &middot; '+esc(r.opmerking) : ''}</div>
+        </div>
+        <div class="uren">${r.uren} u</div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+document.getElementById('kalender-vorige').addEventListener('click', ()=>{
+  kalenderMaandIdx--;
+  if(kalenderMaandIdx<0){ kalenderMaandIdx=11; kalenderJaar--; }
+  renderKalender();
+});
+document.getElementById('kalender-volgende').addEventListener('click', ()=>{
+  kalenderMaandIdx++;
+  if(kalenderMaandIdx>11){ kalenderMaandIdx=0; kalenderJaar++; }
+  renderKalender();
 });
 </script>
 </body>
