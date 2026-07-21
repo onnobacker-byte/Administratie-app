@@ -111,6 +111,27 @@
 
   /* Cards */
   .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:28px;}
+  .kalender-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+  .kalender-header h2{font-size:16px; text-transform:capitalize; margin:0;}
+  .kalender-toggle{display:flex; gap:6px; margin-bottom:14px;}
+  .kalender-toggle-btn{flex:1; text-align:center; opacity:0.55;}
+  .kalender-toggle-btn.actief{opacity:1; background:var(--copper-bg); border-color:var(--copper); color:var(--copper-dark); font-weight:700;}
+  .kalender-table{width:100%; border-collapse:collapse; table-layout:fixed;}
+  .kalender-table th{font-size:10.5px; color:var(--text-muted); font-weight:600; padding:4px 2px; text-align:center;}
+  .kalender-table td{text-align:center; padding:0; height:44px; vertical-align:middle;}
+  .kalender-wk{font-size:10px; color:var(--text-muted);}
+  .kalender-dag{width:34px; height:34px; margin:0 auto; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; border:1px solid transparent; font-size:12.5px; color:var(--text);}
+  .kalender-dag:hover{border-color:var(--copper);}
+  .kalender-dag.buiten-maand{color:var(--border); cursor:default;}
+  .kalender-dag.vandaag{border-color:var(--copper); font-weight:700;}
+  .kalender-dag.geselecteerd{background:var(--copper); color:#fff;}
+  .kalender-dag .uren-stip{font-size:8.5px; margin-top:1px; color:var(--sage); font-weight:600;}
+  .kalender-dag.geselecteerd .uren-stip{color:#fff;}
+  .kalender-dag-detail{margin-top:14px; border-top:1px solid var(--border); padding-top:12px;}
+  .kalender-dag-entry{display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--border); font-size:13.5px;}
+  .kalender-dag-entry:last-child{border-bottom:none;}
+  .kalender-dag-entry .meta{font-size:12px; color:var(--text-muted); margin-top:2px;}
+  .section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 10px;}
   .stat-card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px;}
   .stat-card .label{font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;}
   .stat-card .value{font-family:var(--font-display); font-size:26px; font-weight:600;}
@@ -2021,6 +2042,39 @@ function attachViewHandlers(){
       urenAlleenAfwezigheid = e.target.checked;
       render();
     });
+    document.getElementById('uren-kalender-vorige').addEventListener('click', ()=>{
+      if(urenKalWeergave==='week'){
+        urenKalWeekStart.setDate(urenKalWeekStart.getDate()-7);
+      } else {
+        urenKalMaandIdx--;
+        if(urenKalMaandIdx<0){ urenKalMaandIdx=11; urenKalJaar--; }
+      }
+      render();
+    });
+    document.getElementById('uren-kalender-volgende').addEventListener('click', ()=>{
+      if(urenKalWeergave==='week'){
+        urenKalWeekStart.setDate(urenKalWeekStart.getDate()+7);
+      } else {
+        urenKalMaandIdx++;
+        if(urenKalMaandIdx>11){ urenKalMaandIdx=0; urenKalJaar++; }
+      }
+      render();
+    });
+    document.getElementById('uren-kalender-modus-maand').addEventListener('click', ()=>{
+      urenKalWeergave = 'maand';
+      render();
+    });
+    document.getElementById('uren-kalender-modus-week').addEventListener('click', ()=>{
+      urenKalWeergave = 'week';
+      urenKalWeekStart = urenKalMaandagVanWeek(new Date(urenKalGeselecteerdeDag+'T00:00:00'));
+      render();
+    });
+    main.querySelectorAll('.kalender-dag[data-dag]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        urenKalGeselecteerdeDag = el.dataset.dag;
+        render();
+      });
+    });
   }
 
   if(currentView === 'materialen'){
@@ -2652,7 +2706,14 @@ async function genereerPdf(filename, blocks, {project=null, categorie='los'}={})
     } else if(b.t==='tabline'){
       nieuwePaginaIndienNodig(lineHeightMm+2);
       doc.text(String(b.left||''), marginLeft, y);
-      doc.text(String(b.right||''), pageWidth-marginRight, y, {align:'right'});
+      const bedragKolomBreedte = 24;
+      const match = /^€\s?(.+)$/.exec(String(b.right||''));
+      if(match){
+        doc.text(match[1], pageWidth-marginRight, y, {align:'right'});
+        doc.text('€', pageWidth-marginRight-bedragKolomBreedte, y);
+      } else {
+        doc.text(String(b.right||''), pageWidth-marginRight, y, {align:'right'});
+      }
       y += lineHeightMm + 1.6;
     } else if(b.t==='kenmerk'){
       nieuwePaginaIndienNodig(lineHeightMm+2);
@@ -3175,6 +3236,112 @@ const GEEN_PROJECT_ID = 'V0000';
 let urenWerknemerFilter = '';
 let urenAlleenAfwezigheid = false;
 
+const MAAND_NAMEN_NL = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+const urenKalVandaag = new Date();
+let urenKalJaar = urenKalVandaag.getFullYear();
+let urenKalMaandIdx = urenKalVandaag.getMonth();
+let urenKalWeergave = 'maand';
+function urenKalMaandagVanWeek(datum){
+  const d = new Date(datum);
+  const dagNr = (d.getDay()+6)%7;
+  d.setDate(d.getDate()-dagNr);
+  d.setHours(0,0,0,0);
+  return d;
+}
+let urenKalWeekStart = urenKalMaandagVanWeek(urenKalVandaag);
+let urenKalGeselecteerdeDag = todayISO();
+function urenKalIsoWeekNummer(datum){
+  const d = new Date(Date.UTC(datum.getFullYear(), datum.getMonth(), datum.getDate()));
+  const dagNr = (d.getUTCDay()+6)%7;
+  d.setUTCDate(d.getUTCDate()-dagNr+3);
+  const eersteDonderdag = new Date(Date.UTC(d.getUTCFullYear(),0,4));
+  const diffDagen = (d-eersteDonderdag)/86400000;
+  return 1 + Math.round(diffDagen/7);
+}
+function urenKalDatumIso(jaar, maandIdx, dag){
+  return `${jaar}-${String(maandIdx+1).padStart(2,'0')}-${String(dag).padStart(2,'0')}`;
+}
+
+function urenKalenderTitel(){
+  if(urenKalWeergave==='week'){
+    const wkNr = urenKalIsoWeekNummer(urenKalWeekStart);
+    const weekEind = new Date(urenKalWeekStart); weekEind.setDate(weekEind.getDate()+6);
+    return `Week ${wkNr} &middot; ${urenKalWeekStart.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})} - ${weekEind.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})}`;
+  }
+  return `${MAAND_NAMEN_NL[urenKalMaandIdx]} ${urenKalJaar}`;
+}
+
+function urenKalenderCelHtml(iso, dagNr, urenMap){
+  const klassen = ['kalender-dag'];
+  if(iso===todayISO()) klassen.push('vandaag');
+  if(iso===urenKalGeselecteerdeDag) klassen.push('geselecteerd');
+  const u = urenMap[iso];
+  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNr}${u? `<div class="uren-stip">${u.toFixed(2)}u</div>`:''}</div></td>`;
+}
+
+function urenKalenderBodyHtml(lijst){
+  const urenMap = {};
+  lijst.forEach(u=>{ if(u.datum) urenMap[u.datum] = (urenMap[u.datum]||0) + (u.uren||0); });
+
+  if(urenKalWeergave==='week'){
+    const wkNr = urenKalIsoWeekNummer(urenKalWeekStart);
+    let html = `<tr><td class="kalender-wk">${wkNr}</td>`;
+    for(let i=0;i<7;i++){
+      const d = new Date(urenKalWeekStart); d.setDate(d.getDate()+i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      html += urenKalenderCelHtml(iso, d.getDate(), urenMap);
+    }
+    return html + `</tr>`;
+  }
+
+  const eersteVanMaand = new Date(urenKalJaar, urenKalMaandIdx, 1);
+  const laatsteVanMaand = new Date(urenKalJaar, urenKalMaandIdx+1, 0);
+  const totaalDagen = laatsteVanMaand.getDate();
+  let startOffset = (eersteVanMaand.getDay()+6)%7;
+  const cellen = [];
+  for(let i=0;i<startOffset;i++) cellen.push(null);
+  for(let d=1; d<=totaalDagen; d++) cellen.push(d);
+  while(cellen.length%7!==0) cellen.push(null);
+
+  let html = '';
+  for(let w=0; w<cellen.length/7; w++){
+    const weekCellen = cellen.slice(w*7, w*7+7);
+    const eersteEchte = weekCellen.find(d=>d!==null);
+    const wkNr = eersteEchte ? urenKalIsoWeekNummer(new Date(urenKalJaar, urenKalMaandIdx, eersteEchte)) : '';
+    html += `<tr><td class="kalender-wk">${wkNr}</td>`;
+    weekCellen.forEach(dag=>{
+      if(dag===null){ html += `<td></td>`; return; }
+      html += urenKalenderCelHtml(urenKalDatumIso(urenKalJaar, urenKalMaandIdx, dag), dag, urenMap);
+    });
+    html += `</tr>`;
+  }
+  return html;
+}
+
+function urenKalenderDagDetailHtml(lijst){
+  const dagRegs = lijst.filter(u=>u.datum===urenKalGeselecteerdeDag);
+  const datumObj = new Date(urenKalGeselecteerdeDag+'T00:00:00');
+  const titel = datumObj.toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'});
+  if(!dagRegs.length){
+    return `<div class="section-label" style="text-transform:capitalize;">${titel}</div><div style="color:var(--text-muted); font-size:13.5px;">Geen registraties op deze dag</div>`;
+  }
+  const totaal = som(dagRegs.map(u=>u.uren));
+  return `
+    <div class="section-label" style="text-transform:capitalize;">${titel} &middot; ${totaal.toFixed(2)} u totaal</div>
+    ${dagRegs.map(u=>{
+      const project = projectById(u.projectId);
+      const isAfwezig = u.projectId===GEEN_PROJECT_ID;
+      return `<div class="kalender-dag-entry">
+        <div>
+          <b>${esc(u.werknemerNaam||'-')}</b> &middot; ${isAfwezig? `<span class="tag-nummer" style="background:var(--rust-bg); color:var(--rust);">${GEEN_PROJECT_ID}</span>` : (project? `<span class="tag-nummer">${project.id}</span> ${esc(project.omschrijving||'')}` : esc(u.projectId||''))}
+          <div class="meta">${esc(u.type||'')} &middot; ${esc(u.startTijd||'')}&ndash;${esc(u.eindTijd||'')}${u.opmerking? ' &middot; '+esc(u.opmerking):''}</div>
+        </div>
+        <div style="font-weight:600;">${u.uren} u</div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
 function viewUren(){
   const werknemers = [...state.werknemers].sort((a,b)=>(a.naam||'').localeCompare(b.naam||''));
   let lijst = [...state.urenregistraties].sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''));
@@ -3208,6 +3375,23 @@ function viewUren(){
         <input type="checkbox" id="uren-afwezig-filter" ${urenAlleenAfwezigheid?'checked':''}>
         Alleen verlof/ziekte/afspraak
       </label>
+    </div>
+
+    <div class="panel" id="uren-kalender-panel">
+      <div class="kalender-toggle">
+        <button class="btn btn-sm kalender-toggle-btn ${urenKalWeergave==='maand'?'actief':''}" id="uren-kalender-modus-maand" type="button">Maand</button>
+        <button class="btn btn-sm kalender-toggle-btn ${urenKalWeergave==='week'?'actief':''}" id="uren-kalender-modus-week" type="button">Week</button>
+      </div>
+      <div class="kalender-header">
+        <button class="btn btn-ghost btn-sm" id="uren-kalender-vorige" type="button">&lsaquo;</button>
+        <h2>${urenKalenderTitel()}</h2>
+        <button class="btn btn-ghost btn-sm" id="uren-kalender-volgende" type="button">&rsaquo;</button>
+      </div>
+      <table class="kalender-table">
+        <thead><tr><th>Wk</th><th>Ma</th><th>Di</th><th>Wo</th><th>Do</th><th>Vr</th><th>Za</th><th>Zo</th></tr></thead>
+        <tbody>${urenKalenderBodyHtml(lijst)}</tbody>
+      </table>
+      <div class="kalender-dag-detail">${urenKalenderDagDetailHtml(lijst)}</div>
     </div>
 
     <div class="panel">
