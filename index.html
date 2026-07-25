@@ -247,6 +247,7 @@
     <div class="nav-item" data-view="werknemers"><span class="dot"></span>Werknemers</div>
     <div class="nav-item" data-view="uren"><span class="dot"></span>Uren</div>
     <div class="nav-item" data-view="materialen"><span class="dot"></span>Materialen</div>
+    <div class="nav-item" data-view="planning"><span class="dot"></span>Planning</div>
     <div class="nav-item" data-view="btw"><span class="dot"></span>Btw</div>
     <div class="nav-item" data-view="backup"><span class="dot"></span>Back-up</div>
     <div id="nav-vergrendel" class="nav-item" style="margin-top:auto; display:none;"><span class="dot"></span>🔒 Vergrendelen</div>
@@ -288,7 +289,7 @@ const DEFAULT_LOGO_BASE64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgI
 
 function defaultState(){
   return {
-    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[], materialen:[],
+    klanten:[], projecten:[], offertes:[], facturen:[], werknemers:[], urenregistraties:[], materialen:[], planning:[],
     counters:{klant:0, project:0, offerte:0, factuur:0},
     instellingen:{ uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
       bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' }
@@ -300,7 +301,7 @@ const STORAGE_KEY = 'werkplaats-administratie-data';
 async function loadState(){
   state = defaultState();
   return new Promise((resolve)=>{
-    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false};
+    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false, planning:false};
     function checkKlaar(){
       if(Object.values(ontvangen).every(Boolean)) resolve();
     }
@@ -319,6 +320,11 @@ async function loadState(){
       ontvangen.materialen = true; checkKlaar();
       if(document.getElementById('app')) render();
     }, err=> console.error('materialen', err)));
+    onSnapshotUnsubs.push(db.collection('planning').onSnapshot(snap=>{
+      state.planning = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      ontvangen.planning = true; checkKlaar();
+      if(document.getElementById('app')) render();
+    }, err=> console.error('planning', err)));
     onSnapshotUnsubs.push(db.collection('klanten').onSnapshot(snap=>{
       state.klanten = snap.docs.map(d=>d.data());
       normaliseerState(); ontvangen.klanten = true; checkKlaar();
@@ -359,6 +365,7 @@ function normaliseerState(){
   if(!state.werknemers) state.werknemers = [];
   if(!state.urenregistraties) state.urenregistraties = [];
   if(!state.materialen) state.materialen = [];
+  if(!state.planning) state.planning = [];
   if(!state.counters) state.counters = {klant:0, project:0, offerte:0, factuur:0};
   if(!state.instellingen) state.instellingen = { uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
     bedrijfsnaam:'', adres:'', postcode:'', plaats:'', telefoon:'', email:'', website:'', kvk:'', btwnummer:'', iban:'', ondertekenaar:'', betalingscondities:'60% bij opdracht\n40% bij levering', logoBase64: DEFAULT_LOGO_BASE64, logoMime:'image/jpeg' };
@@ -592,6 +599,7 @@ function render(){
   else if(currentView === 'werknemers') main.innerHTML = viewWerknemers();
   else if(currentView === 'uren') main.innerHTML = viewUren();
   else if(currentView === 'materialen') main.innerHTML = viewMaterialen();
+  else if(currentView === 'planning') main.innerHTML = viewPlanning();
   else if(currentView === 'btw') main.innerHTML = viewBtw();
   else if(currentView === 'backup') main.innerHTML = viewBackup();
   attachViewHandlers();
@@ -2089,6 +2097,65 @@ function attachViewHandlers(){
     });
   }
 
+  if(currentView === 'planning'){
+    main.querySelectorAll('[data-open-project]').forEach(row=>{
+      row.addEventListener('click', ()=> navigate('project-detail', {id: row.dataset.openProject}));
+    });
+    document.getElementById('planning-kalender-vorige').addEventListener('click', ()=>{
+      if(planKalWeergave==='week'){
+        planKalWeekStart.setDate(planKalWeekStart.getDate()-7);
+      } else {
+        planKalMaandIdx--;
+        if(planKalMaandIdx<0){ planKalMaandIdx=11; planKalJaar--; }
+      }
+      render();
+    });
+    document.getElementById('planning-kalender-volgende').addEventListener('click', ()=>{
+      if(planKalWeergave==='week'){
+        planKalWeekStart.setDate(planKalWeekStart.getDate()+7);
+      } else {
+        planKalMaandIdx++;
+        if(planKalMaandIdx>11){ planKalMaandIdx=0; planKalJaar++; }
+      }
+      render();
+    });
+    document.getElementById('planning-kalender-modus-maand').addEventListener('click', ()=>{
+      planKalWeergave = 'maand';
+      render();
+    });
+    document.getElementById('planning-kalender-modus-week').addEventListener('click', ()=>{
+      planKalWeergave = 'week';
+      planKalWeekStart = urenKalMaandagVanWeek(new Date(planKalGeselecteerdeDag+'T00:00:00'));
+      render();
+    });
+    main.querySelectorAll('.kalender-dag[data-dag]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        planKalGeselecteerdeDag = el.dataset.dag;
+        render();
+      });
+    });
+    main.querySelectorAll('[data-del-planning]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        try{ await db.collection('planning').doc(btn.dataset.delPlanning).delete(); showToast('Verwijderd uit planning'); }
+        catch(err){ showToast('Verwijderen mislukt: ' + err.message); }
+      });
+    });
+    const planForm = document.getElementById('planning-toevoegen-form');
+    if(planForm) planForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const werknemerId = fd.get('werknemerId');
+      const werknemer = state.werknemers.find(w=>w.uid===werknemerId);
+      try{
+        await db.collection('planning').add({
+          werknemerId, werknemerNaam: werknemer? werknemer.naam : '',
+          projectId: fd.get('projectId'), datum: planKalGeselecteerdeDag
+        });
+        showToast('Ingepland');
+      }catch(err){ showToast('Inplannen mislukt: ' + err.message); }
+    });
+  }
+
   if(currentView === 'backup'){
     document.getElementById('btn-backup-download').addEventListener('click', ()=>{
       exporteerBackup();
@@ -3306,6 +3373,149 @@ function urenKalIsoWeekNummer(datum){
 }
 function urenKalDatumIso(jaar, maandIdx, dag){
   return `${jaar}-${String(maandIdx+1).padStart(2,'0')}-${String(dag).padStart(2,'0')}`;
+}
+
+/* ===================== PLANNING ===================== */
+const planKalVandaag = new Date();
+let planKalJaar = planKalVandaag.getFullYear();
+let planKalMaandIdx = planKalVandaag.getMonth();
+let planKalWeergave = 'maand';
+let planKalWeekStart = urenKalMaandagVanWeek(planKalVandaag);
+let planKalGeselecteerdeDag = todayISO();
+
+function planKalenderTitel(){
+  if(planKalWeergave==='week'){
+    const wkNr = urenKalIsoWeekNummer(planKalWeekStart);
+    const weekEind = new Date(planKalWeekStart); weekEind.setDate(weekEind.getDate()+6);
+    return `Week ${wkNr} &middot; ${planKalWeekStart.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})} - ${weekEind.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})}`;
+  }
+  return `${MAAND_NAMEN_NL[planKalMaandIdx]} ${planKalJaar}`;
+}
+
+function planKalenderCelHtml(iso, dagNr, aantalMap){
+  const klassen = ['kalender-dag'];
+  if(iso===todayISO()) klassen.push('vandaag');
+  if(iso===planKalGeselecteerdeDag) klassen.push('geselecteerd');
+  const n = aantalMap[iso];
+  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNr}${n? `<div class="uren-stip">${n}&times;</div>`:''}</div></td>`;
+}
+
+function planKalenderBodyHtml(){
+  const aantalMap = {};
+  state.planning.forEach(pl=>{ if(pl.datum) aantalMap[pl.datum] = (aantalMap[pl.datum]||0) + 1; });
+
+  if(planKalWeergave==='week'){
+    const wkNr = urenKalIsoWeekNummer(planKalWeekStart);
+    let html = `<tr><td class="kalender-wk">${wkNr}</td>`;
+    for(let i=0;i<7;i++){
+      const d = new Date(planKalWeekStart); d.setDate(d.getDate()+i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      html += planKalenderCelHtml(iso, d.getDate(), aantalMap);
+    }
+    return html + `</tr>`;
+  }
+
+  const eersteVanMaand = new Date(planKalJaar, planKalMaandIdx, 1);
+  const laatsteVanMaand = new Date(planKalJaar, planKalMaandIdx+1, 0);
+  const totaalDagen = laatsteVanMaand.getDate();
+  let startOffset = (eersteVanMaand.getDay()+6)%7;
+  const cellen = [];
+  for(let i=0;i<startOffset;i++) cellen.push(null);
+  for(let d=1; d<=totaalDagen; d++) cellen.push(d);
+  while(cellen.length%7!==0) cellen.push(null);
+
+  let html = '';
+  for(let w=0; w<cellen.length/7; w++){
+    const weekCellen = cellen.slice(w*7, w*7+7);
+    const eersteEchte = weekCellen.find(d=>d!==null);
+    const wkNr = eersteEchte ? urenKalIsoWeekNummer(new Date(planKalJaar, planKalMaandIdx, eersteEchte)) : '';
+    html += `<tr><td class="kalender-wk">${wkNr}</td>`;
+    weekCellen.forEach(dag=>{
+      if(dag===null){ html += `<td></td>`; return; }
+      html += planKalenderCelHtml(urenKalDatumIso(planKalJaar, planKalMaandIdx, dag), dag, aantalMap);
+    });
+    html += `</tr>`;
+  }
+  return html;
+}
+
+function planKalenderDagDetailHtml(){
+  const actieveProjecten = state.projecten.filter(p=> !['Afgerond','Geannuleerd'].includes(p.status));
+  const dagPlanning = state.planning.filter(pl=>pl.datum===planKalGeselecteerdeDag);
+  const datumObj = new Date(planKalGeselecteerdeDag+'T00:00:00');
+  const titel = datumObj.toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'});
+
+  return `
+    <div class="section-label" style="text-transform:capitalize;">${titel}</div>
+    ${dagPlanning.length ? dagPlanning.map(pl=>{
+      const project = projectById(pl.projectId);
+      return `<div class="kalender-dag-entry">
+        <div>
+          <b>${esc(pl.werknemerNaam||'-')}</b> &middot; ${project? `<span class="tag-nummer">${project.id}</span> ${esc(project.omschrijving||'')}` : esc(pl.projectId||'')}
+        </div>
+        <button class="btn btn-ghost btn-sm btn-danger" data-del-planning="${pl.id}">Verwijderen</button>
+      </div>`;
+    }).join('') : `<div style="color:var(--text-muted); font-size:13.5px; margin-bottom:10px;">Nog niemand ingepland op deze dag</div>`}
+    <form id="planning-toevoegen-form" style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="field" style="margin-bottom:0; flex:1; min-width:150px;">
+        <label>Werknemer</label>
+        <select name="werknemerId" required>
+          ${state.werknemers.filter(w=>w.rol==='werknemer' && w.actief!==false).map(w=>`<option value="${w.uid}">${esc(w.naam)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0; flex:1; min-width:170px;">
+        <label>Project</label>
+        <select name="projectId" required>
+          ${actieveProjecten.map(p=>`<option value="${p.id}">${p.id} - ${esc(p.omschrijving||'')}</option>`).join('')}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Inplannen</button>
+    </form>
+  `;
+}
+
+function viewPlanning(){
+  const projecten = [...state.projecten].sort((a,b)=> b.id.localeCompare(a.id));
+  return `
+    <h1 class="page-title">Planning</h1>
+    <p class="page-sub">Plan werknemers in per dag, en houd alle projecten in de gaten.</p>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:0 0 10px;">Alle projecten</h2>
+    <div class="panel" style="max-height:260px; overflow-y:auto;">
+      <table>
+        <thead><tr><th>Werknummer</th><th>Klant</th><th>Omschrijving</th><th>Status</th></tr></thead>
+        <tbody>
+          ${projecten.length ? projecten.map(p=>{
+            const k = klantById(p.klantId);
+            return `<tr data-open-project="${p.id}">
+              <td><span class="tag-nummer">${p.id}</span></td>
+              <td>${k? esc(k.naam) : '-'}</td>
+              <td>${esc(p.omschrijving||'-')}</td>
+              <td>${statusBadge(p.status, PROJECT_STATUS_MAP)}</td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="4" style="color:var(--text-muted);">Nog geen projecten</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Wie werkt wanneer aan wat</h2>
+    <div class="panel" id="planning-kalender-panel">
+      <div class="kalender-toggle">
+        <button class="btn btn-sm kalender-toggle-btn ${planKalWeergave==='maand'?'actief':''}" id="planning-kalender-modus-maand" type="button">Maand</button>
+        <button class="btn btn-sm kalender-toggle-btn ${planKalWeergave==='week'?'actief':''}" id="planning-kalender-modus-week" type="button">Week</button>
+      </div>
+      <div class="kalender-header">
+        <button class="btn btn-ghost btn-sm" id="planning-kalender-vorige" type="button">&lsaquo;</button>
+        <h2>${planKalenderTitel()}</h2>
+        <button class="btn btn-ghost btn-sm" id="planning-kalender-volgende" type="button">&rsaquo;</button>
+      </div>
+      <table class="kalender-table">
+        <thead><tr><th>Wk</th><th>Ma</th><th>Di</th><th>Wo</th><th>Do</th><th>Vr</th><th>Za</th><th>Zo</th></tr></thead>
+        <tbody>${planKalenderBodyHtml()}</tbody>
+      </table>
+      <div class="kalender-dag-detail">${planKalenderDagDetailHtml()}</div>
+    </div>
+  `;
 }
 
 function urenKalenderTitel(){
