@@ -429,7 +429,7 @@ function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2200);
+  setTimeout(()=>t.classList.remove('show'), 3800);
 }
 
 /* ===================== NUMBERING ===================== */
@@ -2450,8 +2450,8 @@ async function exporteerBegrotingNaarExcel(p){
 
   const arrayBuffer = XLSX.write(wb, {type:'array', bookType:'xlsx', cellStyles:true});
   const blob = new Blob([arrayBuffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const inMapOpgeslagen = await bewaarBestand(`Begroting_${p.id}.xlsx`, blob, p, 'los');
-  showToast(inMapOpgeslagen ? 'Opgeslagen in map (Excel)' : 'Excel-bestand gedownload');
+  const resultaat = await bewaarBestand(`Begroting_${p.id}.xlsx`, blob, p, 'los');
+  showToast(resultaat.opgeslagen ? `Opgeslagen in: ${resultaat.pad}` : 'Excel-bestand gedownload');
 }
 
 /* ===================== WORD EXPORT (offerte / factuur) ===================== */
@@ -2624,15 +2624,19 @@ async function bepaalDoelMap(rootHandle, project, categorie){
   if(!klant){
     // Geen klant gekoppeld: terugvaloptie, gewoon een map per project in de hoofdmap
     const submapNaam = saneerMapnaam(`${project.id} - ${project.omschrijving||''}`);
-    return await rootHandle.getDirectoryHandle(submapNaam, {create:true});
+    return { map: await rootHandle.getDirectoryHandle(submapNaam, {create:true}), pad: submapNaam };
   }
   const typeMapNaam = klant.type === 'Particulier' ? 'Particulieren' : 'Bedrijven';
   const typeMap = await rootHandle.getDirectoryHandle(typeMapNaam, {create:true});
   const klantMapNaam = saneerMapnaam(`${klant.id} - ${klant.naam}`);
   const klantMap = await typeMap.getDirectoryHandle(klantMapNaam, {create:true});
-  if(categorie === 'offerte') return await klantMap.getDirectoryHandle('Offertes', {create:true});
-  if(categorie === 'factuur') return await klantMap.getDirectoryHandle('Facturen', {create:true});
-  return klantMap; // categorie 'los': voorblad en begroting direct in de klantmap
+  if(categorie === 'offerte'){
+    return { map: await klantMap.getDirectoryHandle('Offertes', {create:true}), pad: `${typeMapNaam}/${klantMapNaam}/Offertes` };
+  }
+  if(categorie === 'factuur'){
+    return { map: await klantMap.getDirectoryHandle('Facturen', {create:true}), pad: `${typeMapNaam}/${klantMapNaam}/Facturen` };
+  }
+  return { map: klantMap, pad: `${typeMapNaam}/${klantMapNaam}` }; // categorie 'los': voorblad en begroting direct in de klantmap
 }
 
 async function bewaarBestand(bestandsnaam, blob, project, categorie='los'){
@@ -2643,15 +2647,15 @@ async function bewaarBestand(bestandsnaam, blob, project, categorie='los'){
     a.href = url; a.download = bestandsnaam;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
-    return false;
+    return {opgeslagen:false, pad:null};
   }
   try{
-    const doelMap = project ? await bepaalDoelMap(rootHandle, project, categorie) : rootHandle;
-    const fileHandle = await doelMap.getFileHandle(bestandsnaam, {create:true});
+    const doelInfo = project ? await bepaalDoelMap(rootHandle, project, categorie) : {map: rootHandle, pad: rootHandle.name};
+    const fileHandle = await doelInfo.map.getFileHandle(bestandsnaam, {create:true});
     const writable = await fileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
-    return true;
+    return {opgeslagen:true, pad: doelInfo.pad};
   }catch(e){
     showToast('Opslaan in map mislukt, bestand wordt gedownload: ' + e.message);
     const url = URL.createObjectURL(blob);
@@ -2659,7 +2663,7 @@ async function bewaarBestand(bestandsnaam, blob, project, categorie='los'){
     a.href = url; a.download = bestandsnaam;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
-    return false;
+    return {opgeslagen:false, pad:null};
   }
 }
 
@@ -2768,8 +2772,8 @@ async function genereerPdf(filename, blocks, {project=null, categorie='los'}={})
   });
 
   const blob = doc.output('blob');
-  const inMapOpgeslagen = await bewaarBestand(filename, blob, project, categorie);
-  showToast(inMapOpgeslagen ? `Ook als pdf opgeslagen (${filename})` : 'Ook als pdf gedownload');
+  const resultaat = await bewaarBestand(filename, blob, project, categorie);
+  showToast(resultaat.opgeslagen ? `Opgeslagen in: ${resultaat.pad}` : 'Ook als pdf gedownload');
 }
 
 async function exporteerOfferteNaarPdf(o){
@@ -2933,8 +2937,8 @@ ${bodyXml}
     zip.file(`word/media/logo.${logoExt}`, logoBase64, {base64:true});
   }
   const blob = await zip.generateAsync({type:'blob'});
-  const inMapOpgeslagen = await bewaarBestand(filename, blob, project, categorie);
-  showToast(inMapOpgeslagen ? `Opgeslagen in map (${filename})` : 'Word-bestand gedownload');
+  const resultaat = await bewaarBestand(filename, blob, project, categorie);
+  showToast(resultaat.opgeslagen ? `Opgeslagen in: ${resultaat.pad}` : 'Word-bestand gedownload');
 }
 
 function klantAanhefXml(k){
