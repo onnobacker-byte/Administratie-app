@@ -456,6 +456,7 @@ function fmtDate(d){
   return dt.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'});
 }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
+function todayISOVan(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function addDays(iso, days){
   const d = new Date(iso); d.setDate(d.getDate()+days);
   return d.toISOString().slice(0,10);
@@ -2154,6 +2155,18 @@ function attachViewHandlers(){
         showToast('Ingepland');
       }catch(err){ showToast('Inplannen mislukt: ' + err.message); }
     });
+    document.getElementById('planning-weekbord-vorige').addEventListener('click', ()=>{
+      const d = new Date(planKalGeselecteerdeDag+'T00:00:00');
+      d.setDate(d.getDate()-7);
+      planKalGeselecteerdeDag = todayISOVan(d);
+      render();
+    });
+    document.getElementById('planning-weekbord-volgende').addEventListener('click', ()=>{
+      const d = new Date(planKalGeselecteerdeDag+'T00:00:00');
+      d.setDate(d.getDate()+7);
+      planKalGeselecteerdeDag = todayISOVan(d);
+      render();
+    });
   }
 
   if(currentView === 'backup'){
@@ -3531,6 +3544,11 @@ function viewPlanning(){
       ${planKalenderLegendaHtml()}
       <div class="kalender-dag-detail">${planKalenderDagDetailHtml()}</div>
     </div>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 10px;">Weekbord</h2>
+    <div class="panel" id="planning-weekbord-panel">
+      ${planWeekbordHtml()}
+    </div>
   `;
 }
 
@@ -3546,6 +3564,53 @@ function planKalenderLegendaHtml(){
           <span class="tag-nummer" style="font-size:10.5px;">${esc(pid)}</span> ${project? esc(project.omschrijving||'') : ''}
         </div>`;
       }).join('')}
+    </div>
+  `;
+}
+
+function planWeekbordWeekStart(){
+  return urenKalMaandagVanWeek(new Date(planKalGeselecteerdeDag+'T00:00:00'));
+}
+
+function planWeekbordHtml(){
+  const weekStart = planWeekbordWeekStart();
+  const dagen = [];
+  for(let i=0;i<7;i++){
+    const d = new Date(weekStart); d.setDate(d.getDate()+i);
+    dagen.push({ iso: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`, datumObj: d });
+  }
+  const dagNamen = ['Ma','Di','Wo','Do','Vr','Za','Zo'];
+  const wkNr = urenKalIsoWeekNummer(weekStart);
+  const weknemersActief = state.werknemers.filter(w=>w.rol==='werknemer' && w.actief!==false).sort((a,b)=>(a.naam||'').localeCompare(b.naam||''));
+
+  return `
+    <div class="kalender-header">
+      <button class="btn btn-ghost btn-sm" id="planning-weekbord-vorige" type="button">&lsaquo;</button>
+      <h2>Weekbord &middot; Week ${wkNr}</h2>
+      <button class="btn btn-ghost btn-sm" id="planning-weekbord-volgende" type="button">&rsaquo;</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="kalender-table" style="table-layout:auto; min-width:560px;">
+        <thead><tr>
+          <th style="text-align:left; padding-left:6px;">Werknemer</th>
+          ${dagen.map(d=>`<th>${dagNamen[(d.datumObj.getDay()+6)%7]}<br><span style="font-weight:400; color:var(--text-muted);">${d.datumObj.getDate()}</span></th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${weknemersActief.length ? weknemersActief.map(w=>`
+            <tr>
+              <td style="text-align:left; padding:6px; font-weight:600; white-space:nowrap;">${esc(w.naam)}</td>
+              ${dagen.map(d=>{
+                const items = state.planning.filter(pl=>pl.werknemerId===w.uid && pl.datum===d.iso);
+                if(!items.length) return `<td></td>`;
+                return `<td style="padding:3px;">${items.map(pl=>{
+                  const project = projectById(pl.projectId);
+                  return `<div style="background:${projectKleur(pl.projectId)}; color:#fff; border-radius:5px; padding:2px 4px; font-size:10px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(project? project.omschrijving||'' : '')}">${esc(pl.projectId)}</div>`;
+                }).join('')}</td>`;
+              }).join('')}
+            </tr>
+          `).join('') : `<tr><td colspan="8" style="color:var(--text-muted); padding:10px;">Nog geen actieve werknemers</td></tr>`}
+        </tbody>
+      </table>
     </div>
   `;
 }
