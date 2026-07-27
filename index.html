@@ -3392,17 +3392,31 @@ function planKalenderTitel(){
   return `${MAAND_NAMEN_NL[planKalMaandIdx]} ${planKalJaar}`;
 }
 
-function planKalenderCelHtml(iso, dagNr, aantalMap){
+const PLANNING_KLEUREN = ['#B06B34','#5E7350','#9C4530','#B4832E','#4A6FA5','#7A5C9C','#3E8E7E','#B0555F','#6B7A3E','#8A5A8C'];
+function projectKleur(projectId){
+  let hash = 0;
+  const s = String(projectId||'');
+  for(let i=0;i<s.length;i++){ hash = (hash*31 + s.charCodeAt(i)) & 0xffffffff; }
+  return PLANNING_KLEUREN[Math.abs(hash) % PLANNING_KLEUREN.length];
+}
+
+function planKalenderCelHtml(iso, dagNr, projectenMap){
   const klassen = ['kalender-dag'];
   if(iso===todayISO()) klassen.push('vandaag');
   if(iso===planKalGeselecteerdeDag) klassen.push('geselecteerd');
-  const n = aantalMap[iso];
-  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNr}${n? `<div class="uren-stip">${n}&times;</div>`:''}</div></td>`;
+  const projectIds = projectenMap[iso] || [];
+  const stipjes = projectIds.slice(0,4).map(pid=>`<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${projectKleur(pid)}; margin:0 1px;"></span>`).join('');
+  const extra = projectIds.length > 4 ? `<span style="font-size:8px; color:var(--text-muted);">+${projectIds.length-4}</span>` : '';
+  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNr}${projectIds.length? `<div class="uren-stip">${stipjes}${extra}</div>`:''}</div></td>`;
 }
 
 function planKalenderBodyHtml(){
-  const aantalMap = {};
-  state.planning.forEach(pl=>{ if(pl.datum) aantalMap[pl.datum] = (aantalMap[pl.datum]||0) + 1; });
+  const projectenMap = {};
+  state.planning.forEach(pl=>{
+    if(!pl.datum) return;
+    if(!projectenMap[pl.datum]) projectenMap[pl.datum] = [];
+    if(!projectenMap[pl.datum].includes(pl.projectId)) projectenMap[pl.datum].push(pl.projectId);
+  });
 
   if(planKalWeergave==='week'){
     const wkNr = urenKalIsoWeekNummer(planKalWeekStart);
@@ -3410,7 +3424,7 @@ function planKalenderBodyHtml(){
     for(let i=0;i<7;i++){
       const d = new Date(planKalWeekStart); d.setDate(d.getDate()+i);
       const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      html += planKalenderCelHtml(iso, d.getDate(), aantalMap);
+      html += planKalenderCelHtml(iso, d.getDate(), projectenMap);
     }
     return html + `</tr>`;
   }
@@ -3432,7 +3446,7 @@ function planKalenderBodyHtml(){
     html += `<tr><td class="kalender-wk">${wkNr}</td>`;
     weekCellen.forEach(dag=>{
       if(dag===null){ html += `<td></td>`; return; }
-      html += planKalenderCelHtml(urenKalDatumIso(planKalJaar, planKalMaandIdx, dag), dag, aantalMap);
+      html += planKalenderCelHtml(urenKalDatumIso(planKalJaar, planKalMaandIdx, dag), dag, projectenMap);
     });
     html += `</tr>`;
   }
@@ -3451,6 +3465,7 @@ function planKalenderDagDetailHtml(){
       const project = projectById(pl.projectId);
       return `<div class="kalender-dag-entry">
         <div>
+          <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${projectKleur(pl.projectId)}; margin-right:6px;"></span>
           <b>${esc(pl.werknemerNaam||'-')}</b> &middot; ${project? `<span class="tag-nummer">${project.id}</span> ${esc(project.omschrijving||'')}` : esc(pl.projectId||'')}
         </div>
         <button class="btn btn-ghost btn-sm btn-danger" data-del-planning="${pl.id}">Verwijderen</button>
@@ -3513,7 +3528,24 @@ function viewPlanning(){
         <thead><tr><th>Wk</th><th>Ma</th><th>Di</th><th>Wo</th><th>Do</th><th>Vr</th><th>Za</th><th>Zo</th></tr></thead>
         <tbody>${planKalenderBodyHtml()}</tbody>
       </table>
+      ${planKalenderLegendaHtml()}
       <div class="kalender-dag-detail">${planKalenderDagDetailHtml()}</div>
+    </div>
+  `;
+}
+
+function planKalenderLegendaHtml(){
+  const projectIdsMetPlanning = [...new Set(state.planning.map(pl=>pl.projectId))].sort();
+  if(!projectIdsMetPlanning.length) return '';
+  return `
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+      ${projectIdsMetPlanning.map(pid=>{
+        const project = projectById(pid);
+        return `<div style="display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-muted);">
+          <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${projectKleur(pid)};"></span>
+          <span class="tag-nummer" style="font-size:10.5px;">${esc(pid)}</span> ${project? esc(project.omschrijving||'') : ''}
+        </div>`;
+      }).join('')}
     </div>
   `;
 }
