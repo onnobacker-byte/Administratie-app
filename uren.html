@@ -2,13 +2,13 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Urenregistratie</title>
 <link rel="manifest" href="uren-manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Urenregistratie">
-<meta name="theme-color" content="#F0EBDD">
+<meta name="theme-color" content="#8A5127">
 <style>
   :root{
     --bg:#F7F5F0; --panel:#FFFFFF; --sidebar-bg:#F0EBDD;
@@ -22,11 +22,8 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
-  body{font-family:var(--font); background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased;}
-  header{background:var(--sidebar-bg); border-bottom:1px solid var(--border); padding:16px 20px; display:flex; justify-content:space-between; align-items:center;}
-  header h1{font-size:17px; margin:0; font-weight:700;}
-  header .sub{font-size:12px; color:var(--text-muted);}
-  main{max-width:640px; margin:0 auto; padding:20px 16px 60px;}
+  body{font-family:var(--font); background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; padding-bottom:78px;}
+  main{max-width:640px; margin:0 auto;}
   .panel{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:18px;}
   h2{font-size:15px; font-weight:700; margin:0 0 14px;}
   .field{margin-bottom:14px;}
@@ -43,15 +40,11 @@
   .btn-primary{background:var(--copper); border-color:var(--copper); color:#fff;}
   .btn-ghost{background:none; border:none; color:var(--rust); font-size:13px; width:auto; padding:4px 8px;}
   .tag{display:inline-flex; align-items:center; font-family:monospace; font-size:11px; font-weight:700; background:var(--tag-bg); color:var(--tag-text); padding:2px 8px; border-radius:2px 8px 8px 2px;}
-  .entry{border-bottom:1px solid var(--border); padding:12px 0; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
-  .entry:last-child{border-bottom:none;}
-  .entry .meta{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
-  .entry .uren{font-weight:700; white-space:nowrap;}
-  .empty{color:var(--text-muted); font-size:13.5px; text-align:center; padding:20px 0;}
+  .empty{color:var(--text-muted); font-size:13.5px; text-align:center; padding:24px 0;}
   .toast{
-    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(8px);
-    background:var(--panel); border:1px solid var(--border); color:var(--text); padding:11px 18px;
-    border-radius:8px; font-size:13.5px; box-shadow:0 6px 20px rgba(0,0,0,0.12); opacity:0; transition:opacity .2s, transform .2s; z-index:300;
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(8px);
+    background:var(--copper-dark); border:1px solid var(--copper-dark); color:#fff; padding:11px 18px;
+    border-radius:8px; font-size:13.5px; box-shadow:0 6px 20px rgba(0,0,0,0.18); opacity:0; transition:opacity .2s, transform .2s; z-index:300;
   }
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
   #login-screen{position:fixed; inset:0; background:var(--bg); z-index:500; display:flex; align-items:center; justify-content:center; padding:20px;}
@@ -60,29 +53,58 @@
   #login-screen .icon{font-size:26px; text-align:center; margin-bottom:8px;}
   .error{color:var(--rust); font-size:13px; min-height:16px; margin-bottom:6px;}
   #app{display:none;}
-  .btn-uitloggen{background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; text-decoration:underline;}
-.timer-clock{font-family:monospace; font-size:38px; font-weight:700; text-align:center; margin:6px 0 4px; letter-spacing:1px;}
-.timer-sinds{text-align:center; font-size:12.5px; color:var(--text-muted); margin-bottom:14px;}
-.btn-stop{background:var(--rust-bg); border-color:var(--rust); color:var(--rust);}
-.section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 14px;}
-.kalender-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
-.kalender-header h2{font-size:16px; text-transform:capitalize;}
-.kalender-toggle{display:flex; gap:6px; margin-bottom:14px;}
-.kalender-toggle-btn{flex:1; text-align:center; opacity:0.55;}
-.kalender-toggle-btn.actief{opacity:1; background:var(--copper-bg); border-color:var(--copper); color:var(--copper-dark); font-weight:700;}
-.kalender-table{width:100%; border-collapse:collapse; table-layout:fixed;}
-.kalender-table th{font-size:10.5px; color:var(--text-muted); font-weight:600; padding:4px 2px; text-align:center;}
-.kalender-table td{text-align:center; padding:0; height:44px; vertical-align:middle;}
-.kalender-wk{font-size:10px; color:var(--text-muted);}
-.kalender-dag{width:34px; height:34px; margin:0 auto; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; border:1px solid transparent; font-size:12.5px; color:var(--text);}
-.kalender-dag:hover{border-color:var(--copper);}
-.kalender-dag.buiten-maand{color:var(--border); cursor:default;}
-.kalender-dag.buiten-maand:hover{border-color:transparent;}
-.kalender-dag.vandaag{border-color:var(--copper); font-weight:700;}
-.kalender-dag.geselecteerd{background:var(--copper); color:#fff;}
-.kalender-dag .uren-stip{font-size:8.5px; margin-top:1px; color:var(--sage); font-weight:600;}
-.kalender-dag.geselecteerd .uren-stip{color:#fff;}
-.kalender-dag-detail{margin-top:14px; border-top:1px solid var(--border); padding-top:12px;}
+  .timer-clock{font-family:monospace; font-size:38px; font-weight:700; text-align:center; margin:6px 0 4px; letter-spacing:1px;}
+  .timer-sinds{text-align:center; font-size:12.5px; color:var(--text-muted); margin-bottom:14px;}
+  .btn-stop{background:var(--rust-bg); border-color:var(--rust); color:var(--rust);}
+  .section-label{font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; margin:0 0 14px;}
+
+  /* ===== Week hero (bovenin, net als voorbeeld-app) ===== */
+  .week-hero{background:linear-gradient(160deg, var(--copper-dark), var(--copper)); color:#fff; padding:18px 16px 14px; border-radius:0 0 20px 20px;}
+  .week-hero-top{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .icon-btn{background:rgba(255,255,255,0.16); border:none; color:#fff; width:34px; height:34px; border-radius:50%; font-size:19px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .week-hero-title{text-align:center; flex:1;}
+  .week-titel{font-size:15px; font-weight:700; text-transform:capitalize;}
+  .week-totaal{font-size:12.5px; opacity:0.85; margin-top:2px;}
+  .week-strip{display:flex; justify-content:space-between; margin-top:16px; gap:2px;}
+  .dag-item{display:flex; flex-direction:column; align-items:center; gap:5px; flex:1; cursor:pointer;}
+  .dag-letter{font-size:10px; font-weight:700; opacity:0.75; letter-spacing:0.5px;}
+  .dag-cirkel{width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; border:1.5px solid transparent;}
+  .dag-item.vandaag .dag-cirkel{border-color:#fff;}
+  .dag-item.geselecteerd .dag-cirkel{background:#fff; color:var(--copper-dark); font-weight:700;}
+  .dag-uren{font-size:9.5px; opacity:0.8; min-height:11px;}
+
+  /* ===== Dag-sectie met registraties ===== */
+  .dag-sectie{padding:18px 16px 4px;}
+  .dag-titel{font-size:11.5px; font-weight:700; letter-spacing:0.5px; color:var(--text-muted); text-transform:uppercase; margin-bottom:10px;}
+  .dag-kaart{background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-bottom:12px; padding:14px 14px; display:flex; gap:12px; align-items:flex-start;}
+  .dag-kaart .tijden{width:52px; flex-shrink:0; font-size:13px; font-weight:700; color:var(--text-muted); line-height:1.5; padding-top:1px;}
+  .dag-kaart .inhoud{flex:1; min-width:0;}
+  .dag-kaart .titel-regel{font-size:14.5px; font-weight:700; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .dag-kaart .type-regel{font-size:12px; font-weight:700; letter-spacing:0.4px; color:var(--sage); text-transform:uppercase; margin-top:2px;}
+  .dag-kaart .opmerking-regel{font-size:12.5px; color:var(--text-muted); font-style:italic; margin-top:3px;}
+  .dag-kaart .rechts{flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
+  .dag-kaart .duur{font-size:17px; font-weight:700;}
+  .dag-kaart .verwijder-btn{background:none; border:none; color:var(--rust); font-size:11.5px; cursor:pointer; padding:2px 0;}
+
+  /* ===== Bottom nav + FAB ===== */
+  .bottom-nav{position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--border); display:flex; padding:8px 0 calc(8px + env(safe-area-inset-bottom)); z-index:200;}
+  .nav-btn{flex:1; background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:var(--text-muted); cursor:pointer; font-family:var(--font);}
+  .nav-btn .ico{font-size:19px;}
+  .nav-btn.actief{color:var(--copper-dark); font-weight:700;}
+  .fab{position:fixed; right:18px; bottom:70px; width:54px; height:54px; border-radius:50%; background:var(--copper); color:#fff; border:none; font-size:26px; box-shadow:0 6px 16px rgba(138,81,39,0.4); cursor:pointer; z-index:210;}
+
+  /* ===== Modal (klok / handmatig invoeren) ===== */
+  .modal-overlay{position:fixed; inset:0; background:rgba(42,33,24,0.45); z-index:400; display:flex; align-items:flex-end;}
+  .modal-sheet{background:var(--bg); width:100%; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; padding:18px 16px calc(20px + env(safe-area-inset-bottom));}
+  .modal-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+  .modal-header h2{margin:0;}
+  .modal-toggle{display:flex; gap:6px; margin-bottom:16px; background:var(--sidebar-bg); border-radius:8px; padding:4px;}
+  .toggle-btn{flex:1; text-align:center; background:none; border:none; padding:9px; border-radius:6px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; font-family:var(--font);}
+  .toggle-btn.actief{background:var(--panel); color:var(--copper-dark); box-shadow:0 1px 3px rgba(0,0,0,0.08);}
+
+  /* ===== Account tab ===== */
+  .account-kaart{display:flex; align-items:center; gap:12px; margin-bottom:6px;}
+  .account-avatar{width:46px; height:46px; border-radius:50%; background:var(--copper-bg); color:var(--copper-dark); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:17px;}
 </style>
 </head>
 <body>
@@ -101,16 +123,62 @@
 </div>
 
 <div id="app">
-  <header>
-    <div>
-      <h1 id="header-naam">Urenregistratie</h1>
-      <div class="sub" id="header-sub"></div>
+
+  <div id="tab-uren" class="tab-pane">
+    <div class="week-hero">
+      <div class="week-hero-top">
+        <button class="icon-btn" id="week-vorige" type="button">&lsaquo;</button>
+        <div class="week-hero-title">
+          <div class="week-titel" id="week-titel"></div>
+          <div class="week-totaal" id="week-totaal"></div>
+        </div>
+        <button class="icon-btn" id="week-volgende" type="button">&rsaquo;</button>
+      </div>
+      <div class="week-strip" id="week-strip"></div>
     </div>
-    <button class="btn-uitloggen" id="btn-uitloggen">Uitloggen</button>
-  </header>
-  <main>
-    <div class="panel" id="timer-panel">
-      <h2>Tijd klokken</h2>
+    <main>
+      <div class="dag-sectie">
+        <div class="dag-titel" id="dag-titel"></div>
+        <div id="dag-lijst"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="tab-account" class="tab-pane" style="display:none;">
+    <main>
+      <div class="panel" style="margin-top:20px;">
+        <div class="account-kaart">
+          <div class="account-avatar" id="account-avatar"></div>
+          <div>
+            <div style="font-weight:700; font-size:16px;" id="account-naam"></div>
+            <div style="font-size:12.5px; color:var(--text-muted);">Werknemer</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn" id="btn-uitloggen">Uitloggen</button>
+    </main>
+  </div>
+
+</div>
+
+<button class="fab" id="btn-fab" type="button">+</button>
+<nav class="bottom-nav">
+  <button class="nav-btn actief" data-tab="uren" type="button"><span class="ico">🕒</span><span>Mijn uren</span></button>
+  <button class="nav-btn" data-tab="account" type="button"><span class="ico">👤</span><span>Account</span></button>
+</nav>
+
+<div id="invoer-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h2>Uren toevoegen</h2>
+      <button class="icon-btn" id="modal-sluiten" type="button" style="background:var(--sidebar-bg); color:var(--text);">&times;</button>
+    </div>
+    <div class="modal-toggle">
+      <button class="toggle-btn actief" id="modus-klok" type="button">Tijd klokken</button>
+      <button class="toggle-btn" id="modus-handmatig" type="button">Handmatig</button>
+    </div>
+
+    <div id="modal-klok">
       <div class="field">
         <label>Project</label>
         <select id="timer-project" required></select>
@@ -128,8 +196,7 @@
       <button class="btn btn-stop" id="btn-timer-stop" style="display:none;">Stop &amp; registreren</button>
     </div>
 
-    <div class="panel">
-      <p class="section-label">Of handmatig invoeren</p>
+    <div id="modal-handmatig" style="display:none;">
       <form id="uren-form">
         <div class="field">
           <label>Project</label>
@@ -151,29 +218,7 @@
         <button type="submit" class="btn btn-primary">Registreren</button>
       </form>
     </div>
-
-    <div class="panel" id="kalender-panel">
-      <div class="kalender-toggle">
-        <button class="btn btn-sm kalender-toggle-btn actief" id="kalender-modus-maand" type="button">Maand</button>
-        <button class="btn btn-sm kalender-toggle-btn" id="kalender-modus-week" type="button">Week</button>
-      </div>
-      <div class="kalender-header">
-        <button class="btn btn-ghost btn-sm" id="kalender-vorige" type="button">&lsaquo;</button>
-        <h2 id="kalender-titel" style="margin:0;"></h2>
-        <button class="btn btn-ghost btn-sm" id="kalender-volgende" type="button">&rsaquo;</button>
-      </div>
-      <table class="kalender-table">
-        <thead><tr><th>Wk</th><th>Ma</th><th>Di</th><th>Wo</th><th>Do</th><th>Vr</th><th>Za</th><th>Zo</th></tr></thead>
-        <tbody id="kalender-body"></tbody>
-      </table>
-      <div id="kalender-dag-detail"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Mijn registraties (laatste 20)</h2>
-      <div id="registraties-lijst"><div class="empty">Nog geen registraties</div></div>
-    </div>
-  </main>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -198,10 +243,7 @@ const WERKNEMER_EMAIL_DOMEIN = 'werknemer.intern';
 let huidigeUid = null;
 let alleRegistraties = [];
 const vandaag = new Date();
-let kalenderJaar = vandaag.getFullYear();
-let kalenderMaandIdx = vandaag.getMonth(); // 0-11
-let geselecteerdeDag = todayISO();
-let kalenderWeergave = 'maand'; // 'maand' | 'week'
+
 function maandagVanWeek(datum){
   const d = new Date(datum);
   const dagNr = (d.getDay()+6)%7; // 0 = maandag
@@ -209,7 +251,9 @@ function maandagVanWeek(datum){
   d.setHours(0,0,0,0);
   return d;
 }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
 let kalenderWeekStart = maandagVanWeek(vandaag);
+let geselecteerdeDag = todayISO();
 
 const GEEN_PROJECT = 'V0000';
 const WERKZAAMHEDEN = [
@@ -254,7 +298,6 @@ function toast(msg){
   t.textContent = msg; t.classList.add('show');
   setTimeout(()=> t.classList.remove('show'), 2200);
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
 function fmtDatumKort(iso){
   const d = new Date(iso);
   if(isNaN(d)) return iso;
@@ -266,6 +309,18 @@ function berekenUren(start, eind){
   let minuten = (eh*60+em) - (sh*60+sm);
   if(minuten < 0) minuten += 24*60; // over middernacht heen, uitzondering
   return +(minuten/60).toFixed(2);
+}
+function duurMinuten(start, eind){
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = eind.split(':').map(Number);
+  let minuten = (eh*60+em) - (sh*60+sm);
+  if(minuten < 0) minuten += 24*60;
+  return minuten;
+}
+function fmtUrenMinuten(totaalMinuten){
+  const u = Math.floor(totaalMinuten/60);
+  const m = Math.round(totaalMinuten%60);
+  return `${u}:${String(m).padStart(2,'0')}`;
 }
 
 document.getElementById('login-form').addEventListener('submit', async (e)=>{
@@ -314,8 +369,8 @@ auth.onAuthStateChanged(async (user)=>{
   huidigeNaam = werknemerDoc.data().naam || '';
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  document.getElementById('header-naam').textContent = `Hoi ${huidigeNaam}`;
-  document.getElementById('header-sub').textContent = 'Urenregistratie';
+  document.getElementById('account-naam').textContent = huidigeNaam;
+  document.getElementById('account-avatar').textContent = huidigeNaam.slice(0,1).toUpperCase();
   document.getElementById('uren-datum').value = todayISO();
 
   projectenUnsub = db.collection('projecten').onSnapshot(snap=>{
@@ -328,6 +383,7 @@ auth.onAuthStateChanged(async (user)=>{
       select.innerHTML = opties;
       if(huidig) select.value = huidig;
     });
+    renderWeek();
   }, err=> console.error(err));
 
   herstelTimer();
@@ -337,38 +393,9 @@ auth.onAuthStateChanged(async (user)=>{
     .onSnapshot(snap=>{
       alleRegistraties = snap.docs.map(d=>({id:d.id, ...d.data()}))
         .sort((a,b)=> (b.datum||'').localeCompare(a.datum||'') || (b.startTijd||'').localeCompare(a.startTijd||''));
-      renderRegistraties(alleRegistraties.slice(0,20));
-      renderKalender();
+      renderWeek();
     }, err=> console.error(err));
 });
-
-function renderRegistraties(lijst){
-  const el = document.getElementById('registraties-lijst');
-  if(!lijst.length){ el.innerHTML = '<div class="empty">Nog geen registraties</div>'; return; }
-  el.innerHTML = lijst.map(r=>{
-    const project = projecten.find(p=>p.id===r.projectId);
-    const omschrijving = r.projectId===GEEN_PROJECT ? 'Geen project' : (project? project.omschrijving : '');
-    return `
-      <div class="entry">
-        <div>
-          <span class="tag">${esc(r.projectId)}</span> ${esc(omschrijving)}
-          <div class="meta">${fmtDatumKort(r.datum)} &middot; ${esc(r.type)} &middot; ${esc(r.startTijd)}&ndash;${esc(r.eindTijd)}${r.opmerking? ' &middot; '+esc(r.opmerking) : ''}</div>
-        </div>
-        <div>
-          <div class="uren">${r.uren} u</div>
-          <button class="btn btn-ghost" data-verwijder="${r.id}">Verwijderen</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-  el.querySelectorAll('[data-verwijder]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if(!confirm('Deze registratie verwijderen?')) return;
-      try{ await db.collection('urenregistraties').doc(btn.dataset.verwijder).delete(); }
-      catch(e){ toast('Verwijderen mislukt: ' + e.message); }
-    });
-  });
-}
 
 document.getElementById('uren-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -395,6 +422,9 @@ document.getElementById('uren-form').addEventListener('submit', async (e)=>{
     document.getElementById('uren-opmerking').value = '';
     document.getElementById('uren-start').value = '';
     document.getElementById('uren-eind').value = '';
+    geselecteerdeDag = datum;
+    kalenderWeekStart = maandagVanWeek(new Date(datum+'T00:00:00'));
+    sluitModal();
   }catch(err){
     foutEl.textContent = 'Registreren mislukt: ' + err.message;
   }
@@ -486,13 +516,17 @@ document.getElementById('btn-timer-stop').addEventListener('click', async ()=>{
     timerState = null;
     bewaarTimerState(null);
     updateTimerUI();
+    geselecteerdeDag = datum;
+    kalenderWeekStart = maandagVanWeek(new Date(datum+'T00:00:00'));
+    sluitModal();
   }catch(err){
     foutEl.textContent = 'Registreren mislukt: ' + err.message;
   }
 });
 
-/* ===================== KALENDER (weeknummers, maandweergave, dagdetail) ===================== */
+/* ===================== WEEK-WEERGAVE (strip bovenin + dag-kaarten) ===================== */
 const MAAND_NAMEN = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+const DAG_LETTERS = ['MA','DI','WO','DO','VR','ZA','ZO'];
 
 function isoWeekNummer(datum){
   const d = new Date(Date.UTC(datum.getFullYear(), datum.getMonth(), datum.getDate()));
@@ -502,154 +536,133 @@ function isoWeekNummer(datum){
   const diffDagen = (d - eersteDonderdag) / 86400000;
   return 1 + Math.round(diffDagen/7);
 }
-function datumIso(jaar, maandIdx, dag){
-  const mm = String(maandIdx+1).padStart(2,'0');
-  const dd = String(dag).padStart(2,'0');
-  return `${jaar}-${mm}-${dd}`;
-}
-function urenPerDag(){
+function minutenPerDag(){
   const map = {};
   alleRegistraties.forEach(r=>{
-    if(!r.datum) return;
-    map[r.datum] = (map[r.datum]||0) + (r.uren||0);
+    if(!r.datum || !r.startTijd || !r.eindTijd) return;
+    map[r.datum] = (map[r.datum]||0) + duurMinuten(r.startTijd, r.eindTijd);
   });
   return map;
 }
 
-function bouwDagCelHtml(iso, dagNummer, urenMap, vandaagIso){
-  const klassen = ['kalender-dag'];
-  if(iso===vandaagIso) klassen.push('vandaag');
-  if(iso===geselecteerdeDag) klassen.push('geselecteerd');
-  const urenVandaag = urenMap[iso];
-  return `<td><div class="${klassen.join(' ')}" data-dag="${iso}">${dagNummer}${urenVandaag? `<div class="uren-stip">${urenVandaag}u</div>` : ''}</div></td>`;
-}
-
-function renderKalender(){
-  if(kalenderWeergave === 'week') renderKalenderWeek();
-  else renderKalenderMaand();
-}
-
-function renderKalenderMaand(){
-  document.getElementById('kalender-titel').textContent = `${MAAND_NAMEN[kalenderMaandIdx]} ${kalenderJaar}`;
-  const eersteVanMaand = new Date(kalenderJaar, kalenderMaandIdx, 1);
-  const laatsteVanMaand = new Date(kalenderJaar, kalenderMaandIdx+1, 0);
-  const totaalDagenMaand = laatsteVanMaand.getDate();
-
-  // Maandag als eerste dag van de week bepalen
-  let startOffset = (eersteVanMaand.getDay()+6)%7; // 0 = maandag
-  const cellen = [];
-  for(let i=0;i<startOffset;i++) cellen.push(null);
-  for(let dag=1; dag<=totaalDagenMaand; dag++) cellen.push(dag);
-  while(cellen.length % 7 !== 0) cellen.push(null);
-
-  const urenMap = urenPerDag();
-  const vandaagIso = todayISO();
-
-  let html = '';
-  for(let w=0; w<cellen.length/7; w++){
-    const weekCellen = cellen.slice(w*7, w*7+7);
-    const eersteEchteDag = weekCellen.find(d=>d!==null);
-    const wkNr = eersteEchteDag ? isoWeekNummer(new Date(kalenderJaar, kalenderMaandIdx, eersteEchteDag)) : '';
-    html += `<tr><td class="kalender-wk">${wkNr}</td>`;
-    weekCellen.forEach(dag=>{
-      if(dag===null){ html += `<td></td>`; return; }
-      const iso = datumIso(kalenderJaar, kalenderMaandIdx, dag);
-      html += bouwDagCelHtml(iso, dag, urenMap, vandaagIso);
-    });
-    html += `</tr>`;
-  }
-  document.getElementById('kalender-body').innerHTML = html;
-  koppelDagKlikHandlers();
-  renderDagDetail();
-}
-
-function renderKalenderWeek(){
+function renderWeek(){
   const wkNr = isoWeekNummer(kalenderWeekStart);
   const weekEind = new Date(kalenderWeekStart);
   weekEind.setDate(weekEind.getDate()+6);
-  const fmt = (d)=> d.toLocaleDateString('nl-NL', {day:'numeric', month: d.getMonth()===weekEind.getMonth()? undefined : 'short'});
-  document.getElementById('kalender-titel').textContent = `Week ${wkNr} · ${fmt(kalenderWeekStart)} - ${weekEind.toLocaleDateString('nl-NL',{day:'numeric', month:'short'})}`;
+  const zelfdeMaand = kalenderWeekStart.getMonth()===weekEind.getMonth();
+  const titel = zelfdeMaand
+    ? `Week ${wkNr} · ${MAAND_NAMEN[kalenderWeekStart.getMonth()]} ${kalenderWeekStart.getFullYear()}`
+    : `Week ${wkNr} · ${kalenderWeekStart.getDate()} ${MAAND_NAMEN[kalenderWeekStart.getMonth()].slice(0,3)} - ${weekEind.getDate()} ${MAAND_NAMEN[weekEind.getMonth()].slice(0,3)}`;
+  document.getElementById('week-titel').textContent = titel;
 
-  const urenMap = urenPerDag();
+  const minutenMap = minutenPerDag();
   const vandaagIso = todayISO();
-  let html = `<tr><td class="kalender-wk">${wkNr}</td>`;
+
+  let weekTotaal = 0;
+  let stripHtml = '';
   for(let i=0;i<7;i++){
     const d = new Date(kalenderWeekStart);
     d.setDate(d.getDate()+i);
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    html += bouwDagCelHtml(iso, d.getDate(), urenMap, vandaagIso);
+    const min = minutenMap[iso] || 0;
+    weekTotaal += min;
+    const klassen = ['dag-item'];
+    if(iso===vandaagIso) klassen.push('vandaag');
+    if(iso===geselecteerdeDag) klassen.push('geselecteerd');
+    stripHtml += `
+      <div class="${klassen.join(' ')}" data-dag="${iso}">
+        <div class="dag-letter">${DAG_LETTERS[i]}</div>
+        <div class="dag-cirkel">${d.getDate()}</div>
+        <div class="dag-uren">${min? fmtUrenMinuten(min) : ''}</div>
+      </div>`;
   }
-  html += `</tr>`;
-  document.getElementById('kalender-body').innerHTML = html;
-  koppelDagKlikHandlers();
-  renderDagDetail();
-}
-
-function koppelDagKlikHandlers(){
-  document.querySelectorAll('.kalender-dag').forEach(el=>{
+  document.getElementById('week-strip').innerHTML = stripHtml;
+  document.getElementById('week-totaal').textContent = `${fmtUrenMinuten(weekTotaal)} uur`;
+  document.querySelectorAll('.dag-item').forEach(el=>{
     el.addEventListener('click', ()=>{
       geselecteerdeDag = el.dataset.dag;
-      renderKalender();
+      renderWeek();
+    });
+  });
+
+  renderDagLijst();
+}
+
+function renderDagLijst(){
+  const titelEl = document.getElementById('dag-titel');
+  const lijstEl = document.getElementById('dag-lijst');
+  const datumObj = new Date(geselecteerdeDag+'T00:00:00');
+  titelEl.textContent = datumObj.toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'});
+
+  const dagRegs = alleRegistraties.filter(r=>r.datum===geselecteerdeDag);
+  if(!dagRegs.length){
+    lijstEl.innerHTML = `<div class="empty">Geen registraties op deze dag</div>`;
+    return;
+  }
+  const dagenGesorteerd = [...dagRegs].sort((a,b)=> (a.startTijd||'').localeCompare(b.startTijd||''));
+  lijstEl.innerHTML = dagenGesorteerd.map(r=>{
+    const project = projecten.find(p=>p.id===r.projectId);
+    const titel = r.projectId===GEEN_PROJECT ? r.type : `${r.projectId} - ${project? project.omschrijving : ''}`;
+    const duur = r.startTijd && r.eindTijd ? fmtUrenMinuten(duurMinuten(r.startTijd, r.eindTijd)) : r.uren;
+    return `
+      <div class="dag-kaart">
+        <div class="tijden">${esc(r.startTijd||'')}<br>${esc(r.eindTijd||'')}</div>
+        <div class="inhoud">
+          <div class="titel-regel">${esc(titel)}</div>
+          <div class="type-regel">${esc(r.type||'')}</div>
+          ${r.opmerking? `<div class="opmerking-regel">${esc(r.opmerking)}</div>` : ''}
+        </div>
+        <div class="rechts">
+          <div class="duur">${duur}</div>
+          <button class="verwijder-btn" data-verwijder="${r.id}">Verwijderen</button>
+        </div>
+      </div>`;
+  }).join('');
+  lijstEl.querySelectorAll('[data-verwijder]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Deze registratie verwijderen?')) return;
+      try{ await db.collection('urenregistraties').doc(btn.dataset.verwijder).delete(); }
+      catch(e){ toast('Verwijderen mislukt: ' + e.message); }
     });
   });
 }
 
-function renderDagDetail(){
-  const el = document.getElementById('kalender-dag-detail');
-  const dagRegs = alleRegistraties.filter(r=>r.datum===geselecteerdeDag);
-  const datumObj = new Date(geselecteerdeDag+'T00:00:00');
-  const titel = datumObj.toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'});
-  if(!dagRegs.length){
-    el.innerHTML = `<div class="section-label" style="text-transform:capitalize;">${titel}</div><div class="empty">Geen registraties op deze dag</div>`;
-    return;
-  }
-  const totaalUren = dagRegs.reduce((s,r)=>s+(r.uren||0),0);
-  el.innerHTML = `
-    <div class="section-label" style="text-transform:capitalize;">${titel} &middot; ${totaalUren} u totaal</div>
-    ${dagRegs.map(r=>{
-      const project = projecten.find(p=>p.id===r.projectId);
-      const omschrijving = r.projectId===GEEN_PROJECT ? 'Geen project' : (project? project.omschrijving : '');
-      return `<div class="entry">
-        <div>
-          <span class="tag">${esc(r.projectId)}</span> ${esc(omschrijving)}
-          <div class="meta">${esc(r.type)} &middot; ${esc(r.startTijd)}&ndash;${esc(r.eindTijd)}${r.opmerking? ' &middot; '+esc(r.opmerking) : ''}</div>
-        </div>
-        <div class="uren">${r.uren} u</div>
-      </div>`;
-    }).join('')}
-  `;
-}
+document.getElementById('week-vorige').addEventListener('click', ()=>{
+  kalenderWeekStart.setDate(kalenderWeekStart.getDate()-7);
+  renderWeek();
+});
+document.getElementById('week-volgende').addEventListener('click', ()=>{
+  kalenderWeekStart.setDate(kalenderWeekStart.getDate()+7);
+  renderWeek();
+});
 
-document.getElementById('kalender-vorige').addEventListener('click', ()=>{
-  if(kalenderWeergave==='week'){
-    kalenderWeekStart.setDate(kalenderWeekStart.getDate()-7);
-  } else {
-    kalenderMaandIdx--;
-    if(kalenderMaandIdx<0){ kalenderMaandIdx=11; kalenderJaar--; }
-  }
-  renderKalender();
+/* ===================== TABS + FAB + MODAL ===================== */
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('actief'));
+    btn.classList.add('actief');
+    document.getElementById('tab-uren').style.display = btn.dataset.tab==='uren' ? 'block' : 'none';
+    document.getElementById('tab-account').style.display = btn.dataset.tab==='account' ? 'block' : 'none';
+  });
 });
-document.getElementById('kalender-volgende').addEventListener('click', ()=>{
-  if(kalenderWeergave==='week'){
-    kalenderWeekStart.setDate(kalenderWeekStart.getDate()+7);
-  } else {
-    kalenderMaandIdx++;
-    if(kalenderMaandIdx>11){ kalenderMaandIdx=0; kalenderJaar++; }
-  }
-  renderKalender();
+
+function openModal(){ document.getElementById('invoer-modal').style.display = 'flex'; }
+function sluitModal(){ document.getElementById('invoer-modal').style.display = 'none'; }
+document.getElementById('btn-fab').addEventListener('click', openModal);
+document.getElementById('modal-sluiten').addEventListener('click', sluitModal);
+document.getElementById('invoer-modal').addEventListener('click', (e)=>{ if(e.target.id==='invoer-modal') sluitModal(); });
+
+document.getElementById('modus-klok').addEventListener('click', ()=>{
+  document.getElementById('modus-klok').classList.add('actief');
+  document.getElementById('modus-handmatig').classList.remove('actief');
+  document.getElementById('modal-klok').style.display = 'block';
+  document.getElementById('modal-handmatig').style.display = 'none';
 });
-document.getElementById('kalender-modus-maand').addEventListener('click', ()=>{
-  kalenderWeergave = 'maand';
-  document.getElementById('kalender-modus-maand').classList.add('actief');
-  document.getElementById('kalender-modus-week').classList.remove('actief');
-  renderKalender();
-});
-document.getElementById('kalender-modus-week').addEventListener('click', ()=>{
-  kalenderWeergave = 'week';
-  kalenderWeekStart = maandagVanWeek(new Date(geselecteerdeDag+'T00:00:00'));
-  document.getElementById('kalender-modus-week').classList.add('actief');
-  document.getElementById('kalender-modus-maand').classList.remove('actief');
-  renderKalender();
+document.getElementById('modus-handmatig').addEventListener('click', ()=>{
+  document.getElementById('modus-handmatig').classList.add('actief');
+  document.getElementById('modus-klok').classList.remove('actief');
+  document.getElementById('modal-handmatig').style.display = 'block';
+  document.getElementById('modal-klok').style.display = 'none';
 });
 </script>
 </body>
