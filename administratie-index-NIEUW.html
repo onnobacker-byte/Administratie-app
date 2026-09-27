@@ -3740,9 +3740,12 @@ async function verwijderBestelling(id){
   try{ await db.collection('bestellingen').doc(id).delete(); showToast('Bestelling verwijderd'); }
   catch(e){ showToast('Verwijderen mislukt: ' + e.message); }
 }
-// zet een bestelling om in een klant + project, met per module alvast een begrotings-onderdeel (naam +
-// afmeting) klaargezet - de materiaal-/urenregels (en dus de eigen inkoopprijzen) vul je zelf in, precies
-// zoals bij een normaal project.
+// zet een bestelling om in een klant + project; het bedrag dat de klant op de website al te zien kreeg
+// wordt automatisch teruggerekend naar 1 materiaalregel, met de HUIDIGE marge- en kantoorkosten-instelling,
+// zodat de aanneemsom van het onderdeel meteen weer precies dat bedrag is - zo staat er direct een kloppend
+// bedrag klaar om te factureren, zonder dat marge/kantoorkosten er dubbel bovenop komen. Het volledige
+// ontwerp per module (met afmetingen en materiaal) staat in de opmerkingen; de ene regel kun je later zelf
+// opsplitsen in losse materialen met echte inkoopprijzen, als je dat precies per project wilt bijhouden.
 async function importeerBestelling(id){
   const b = bestellingById(id);
   if(!b) return;
@@ -3761,14 +3764,26 @@ async function importeerBestelling(id){
       await db.collection('klanten').doc(klant.id).set(klant);
     }
     const projectId = nextWerkNummer();
-    // de website stuurt het ontwerp als leesbare tekst mee (b.ontwerpTekst, met per module de afmeting,
-    // indeling en materiaal) - die zet je hieronder in de opmerkingen; hier alvast 1 onderdeel klaarzetten
-    // om de begroting mee te beginnen, de materiaal-/urenregels vul je zelf in met je eigen inkoopprijzen
-    const onderdelen = [{ id: uid(), naam: 'Vanaf website (zie opmerkingen hieronder)', afmetingen: '', materiaalregels: [], urenregels: [] }];
+    const marge = 1 + ((state.instellingen.materiaalmarge || 0) / 100);
+    const kantoorFactor = 1 + ((state.instellingen.kantoorkosten || 0) / 100);
+    const terugrekenFactor = marge * kantoorFactor;
+    const teruggerekendeInkoop = terugrekenFactor > 0 ? Math.round(((b.totaalExclBtw || 0) / terugrekenFactor) * 100) / 100 : 0;
+    const onderdelen = [{
+      id: uid(), naam: b.opstelling || 'Vanaf website', afmetingen: '',
+      materiaalregels: [{
+        id: uid(), aantal: 1,
+        omschrijving: 'Bestelling via website (aanneemsom teruggerekend naar ' + euro(b.totaalExclBtw) + ' excl. btw, zie opmerkingen voor specificatie per module)',
+        prijs: teruggerekendeInkoop
+      }],
+      urenregels: []
+    }];
     const project = {
       id: projectId, klantId: klant.id, status: 'Nieuw', startdatum: todayISO(),
       omschrijving: 'Website-bestelling - ' + (b.opstelling || ''),
-      begroting: { onderdelen, opmerkingen: b.ontwerpTekst || '' }
+      begroting: {
+        onderdelen,
+        opmerkingen: (b.ontwerpTekst || '') + '\n\n--- Let op ---\nDe materiaalregel hierboven is automatisch zo berekend dat de aanneemsom (excl. btw) van dit onderdeel precies ' + euro(b.totaalExclBtw) + ' wordt - hetzelfde bedrag dat de klant op de website heeft gezien. Wil je dit opsplitsen in losse materialen met je eigen inkoopprijzen, pas de regel dan hierboven zelf aan (let op: dan verandert het totaalbedrag).'
+      }
     };
     await db.collection('projecten').doc(projectId).set(project);
     await db.collection('bestellingen').doc(id).update({ status: 'geimporteerd', projectId });
