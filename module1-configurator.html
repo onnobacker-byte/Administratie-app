@@ -6367,7 +6367,18 @@ document.getElementById('requestBtn').addEventListener('click', ()=>{
   // zodra hij 'm in zijn eigen mailprogramma verstuurt (het gaat nog altijd ook gewoon naar Module1
   // zelf via "To") — geen apart server-verzendscript nodig hiervoor.
   const cc = encodeURIComponent(customerInfo.email.trim());
-  window.location.href = `mailto:info@module1.nl?cc=${cc}&subject=${subject}&body=${body}`;
+  const mailtoUrl = `mailto:info@module1.nl?cc=${cc}&subject=${subject}&body=${body}`;
+  // Een website mag met JavaScript nooit automatisch een bestand aan een mailtje toevoegen (dat zou
+  // misbruikt kunnen worden) - daarom laten we de klant de offerte eerst zelf als PDF bewaren, met
+  // precies dezelfde opmaak als "Offerte bekijken (briefpapier)", en openen we DAARNA het mailprogramma
+  // met het verzoek die PDF toe te voegen.
+  openQuoteSheet();
+  let mailGeopend = false;
+  const openMail = () => { if(mailGeopend) return; mailGeopend = true; window.removeEventListener('afterprint', openMail); window.location.href = mailtoUrl; };
+  alert('We laten nu de offerte zien om te bewaren als PDF.\n\nOp de computer: kies bij het printvenster "Opslaan als PDF".\nOp de iPhone/iPad: tik op het deel-icoon, kies "Druk af", en knijp (pinch) op het voorbeeld om er een PDF van te maken die je kunt bewaren of delen.\n\nDaarna openen we je mailprogramma - voeg de zojuist bewaarde PDF daar als bijlage toe.');
+  window.addEventListener('afterprint', openMail);
+  try{ window.print(); }catch(e){ openMail(); }
+  setTimeout(openMail, 20000); // vangnet: als de browser geen 'afterprint' stuurt, toch na een tijdje doorgaan
 });
 
 // ---- Beheer-stand voor de prijslijst (begroting) ----
