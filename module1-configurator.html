@@ -1213,7 +1213,8 @@
   <div class="qo-toolbar">
     <button type="button" class="btn secondary" id="quoteCloseBtn">Sluiten</button>
     <button type="button" class="btn secondary" id="quoteImgBtn">Afbeelding bewaren</button>
-    <button type="button" class="btn" id="quotePrintBtn">Afdrukken / bewaar als pdf</button>
+    <button type="button" class="btn secondary" id="quotePrintBtn">Afdrukken / bewaar als pdf</button>
+    <button type="button" class="btn" id="orderBtn">Bestelling plaatsen</button>
   </div>
   <div id="quoteSheet" class="qs"></div>
 </div>
@@ -6334,6 +6335,110 @@ document.getElementById('quoteImgBtn').addEventListener('click', () => {
   }
 });
 document.getElementById('quotePrintBtn').addEventListener('click', () => { try { window.print(); } catch(e){ alert('Afdrukken lukt hier niet - gebruik de deel-knop van je browser en kies Afdrukken of Bewaar als pdf.'); } });
+
+const ORDER_CREATE_URL = 'https://firestore.googleapis.com/v1/projects/adminstratie-programma/databases/(default)/documents/bestellingen?key=AIzaSyC-tTAkasaN6s0D_tid9aTFMkT4bLy4FN8';
+// zet een gewone JS-waarde om naar het Firestore REST-formaat (nodig om zonder de hele Firebase-bibliotheek,
+// puur met fetch, een document te kunnen aanmaken)
+function fsVal(v){
+  if(v === null || v === undefined) return { nullValue: null };
+  if(typeof v === 'string') return { stringValue: v };
+  if(typeof v === 'boolean') return { booleanValue: v };
+  if(typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if(Array.isArray(v)) return { arrayValue: { values: v.map(fsVal) } };
+  if(typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,val]) => [k, fsVal(val)])) } };
+  return { stringValue: String(v) };
+}
+function arrayBufferToBase64(buf){
+  let binary = ''; const bytes = new Uint8Array(buf); const chunk = 0x8000;
+  for(let i=0; i<bytes.length; i+=chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+  return btoa(binary);
+}
+// bouwt 1 binair STL-bestand (in mm, 1 cm in de configurator = 10 mm) van de HELE kastopstelling (alle
+// wanden samen, zonder vloer/wanden/plafond van de Ruimte) - elke driehoek van elke mesh wordt overgenomen.
+function exportCabinetSTLBase64(){
+  if(typeof THREE === 'undefined' || !modelGroup) return null;
+  const before = { showRoom, view: currentView };
+  try{
+    showRoom = false; currentView = '3d';
+    build3dModel();
+    modelGroup.updateMatrixWorld(true);
+    const SCALE = 10; // cm -> mm
+    const tmpV = new THREE.Vector3();
+    const triangles = [];
+    const getVert = (pos, mat, i) => { tmpV.set(pos.getX(i), pos.getY(i), pos.getZ(i)); tmpV.applyMatrix4(mat); return [tmpV.x*SCALE, tmpV.y*SCALE, tmpV.z*SCALE]; };
+    modelGroup.traverse(obj => {
+      if(!obj.isMesh || !obj.geometry || !obj.geometry.attributes || !obj.geometry.attributes.position) return;
+      const geo = obj.geometry, pos = geo.attributes.position, idx = geo.index, mat = obj.matrixWorld;
+      const count = idx ? idx.count : pos.count;
+      for(let i=0; i<count; i+=3){
+        const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i+1) : i+1, ic = idx ? idx.getX(i+2) : i+2;
+        const a = getVert(pos, mat, ia), b = getVert(pos, mat, ib), c = getVert(pos, mat, ic);
+        const ab = new THREE.Vector3(b[0]-a[0], b[1]-a[1], b[2]-a[2]);
+        const ac = new THREE.Vector3(c[0]-a[0], c[1]-a[1], c[2]-a[2]);
+        const n = new THREE.Vector3().crossVectors(ab, ac).normalize();
+        triangles.push([n.x, n.y, n.z].concat(a, b, c));
+      }
+    });
+    const buf = new ArrayBuffer(84 + triangles.length*50);
+    const dv = new DataView(buf);
+    dv.setUint32(80, triangles.length, true);
+    let off = 84;
+    triangles.forEach(tri => {
+      for(let k=0; k<12; k++){ dv.setFloat32(off, tri[k], true); off += 4; }
+      dv.setUint16(off, 0, true); off += 2;
+    });
+    return arrayBufferToBase64(buf);
+  } finally {
+    showRoom = before.showRoom; currentView = before.view;
+    build3dModel();
+  }
+}
+// Zelfstandige HTML-pagina van de offerte, exact zoals de klant 'm ziet (zelfde stijl/plaatje) - dit is
+// wat er in de administratie-app als "de PDF" van de bestelling geopend/afgedrukt kan worden.
+function buildOfferteSnapshotHtml(){
+  const styles = Array.from(document.querySelectorAll('style')).map(s => s.textContent).join('\n');
+  const sheetHtml = document.getElementById('quoteSheet').innerHTML;
+  return '<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offerte Module1 - ' + esc2(customerInfo.naam || '') + '</title><style>' + styles + '\nbody{background:#dedbd0;margin:0;padding:0;} .qs{max-width:900px;margin:20px auto;}</style></head><body><div class="qs">' + sheetHtml + '</div></body></html>';
+}
+function esc2(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function buildOrderPayload(){
+  const data = buildQuoteData();
+  const totalNow = calculatePrice();
+  const btwPct = (otherPrices.btwPct === undefined || otherPrices.btwPct === null) ? 21 : otherPrices.btwPct;
+  const round2 = v => Math.round((v||0)*100)/100;
+  return {
+    klant: { naam: customerInfo.naam, email: customerInfo.email, telefoon: customerInfo.telefoon, adres: customerInfo.adres, postcode: customerInfo.postcode, plaats: customerInfo.plaats },
+    opstelling: data.type,
+    inmeten: wantsMeasurement === true ? 'ja' : (wantsMeasurement === false ? 'nee' : 'nog geen keuze'),
+    monteren: wantsInstallation === true ? 'ja' : (wantsInstallation === false ? 'nee' : 'nog geen keuze'),
+    ontwerpTekst: buildQuoteDesignText(),
+    totaalExclBtw: round2(totalNow), btwPct: btwPct, totaalInclBtw: round2(totalNow*(1+btwPct/100)),
+    offerteHtml: buildOfferteSnapshotHtml(), // de complete offerte (met plaatje) als kant-en-klare pagina om in de administratie-app als PDF te bekijken/bewaren
+    stlBase64: exportCabinetSTLBase64() || '',
+    status: 'nieuw',
+    aangemaaktOp: new Date().toISOString()
+  };
+}
+document.getElementById('orderBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('orderBtn');
+  const oudeTekst = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Bezig met versturen...';
+  try{
+    const payload = buildOrderPayload();
+    const body = JSON.stringify({ fields: fsVal(payload).mapValue.fields });
+    const res = await fetch(ORDER_CREATE_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    if(!res.ok) throw new Error('Versturen mislukt (fout ' + res.status + ')');
+    alert('Je bestelling is verstuurd! We nemen zo snel mogelijk contact met je op.');
+    const cc = encodeURIComponent((customerInfo.email||'').trim());
+    const subject = encodeURIComponent('Nieuwe bestelling - ' + customerInfo.naam);
+    const kortBody = encodeURIComponent('Er is zojuist een nieuwe bestelling geplaatst door ' + customerInfo.naam + ' (' + customerInfo.email + ').\n\nDe volledige bestelling (met ontwerp, afbeelding en 3D-bestand) staat klaar in de administratie-app, onder Bestellingen.');
+    window.location.href = 'mailto:info@module1.nl?cc=' + cc + '&subject=' + subject + '&body=' + kortBody;
+  }catch(e){
+    alert('Bestellen is helaas niet gelukt (' + e.message + '). Probeer het later nog eens, of vraag in plaats daarvan een offerte aan.');
+  }finally{
+    btn.disabled = false; btn.textContent = oudeTekst;
+  }
+});
 document.getElementById('requestBtn').addEventListener('click', ()=>{
   if(!customerInfo.naam.trim() || !customerInfo.email.trim()){
     alert('Vul in stap 8 in ieder geval je naam en e-mailadres in voordat je de aanvraag verstuurt.');
@@ -6367,18 +6472,9 @@ document.getElementById('requestBtn').addEventListener('click', ()=>{
   // zodra hij 'm in zijn eigen mailprogramma verstuurt (het gaat nog altijd ook gewoon naar Module1
   // zelf via "To") — geen apart server-verzendscript nodig hiervoor.
   const cc = encodeURIComponent(customerInfo.email.trim());
-  const mailtoUrl = `mailto:info@module1.nl?cc=${cc}&subject=${subject}&body=${body}`;
-  // Een website mag met JavaScript nooit automatisch een bestand aan een mailtje toevoegen (dat zou
-  // misbruikt kunnen worden) - daarom laten we de klant de offerte eerst zelf als PDF bewaren, met
-  // precies dezelfde opmaak als "Offerte bekijken (briefpapier)", en openen we DAARNA het mailprogramma
-  // met het verzoek die PDF toe te voegen.
-  openQuoteSheet();
-  let mailGeopend = false;
-  const openMail = () => { if(mailGeopend) return; mailGeopend = true; window.removeEventListener('afterprint', openMail); window.location.href = mailtoUrl; };
-  alert('We laten nu de offerte zien om te bewaren als PDF.\n\nOp de computer: kies bij het printvenster "Opslaan als PDF".\nOp de iPhone/iPad: tik op het deel-icoon, kies "Druk af", en knijp (pinch) op het voorbeeld om er een PDF van te maken die je kunt bewaren of delen.\n\nDaarna openen we je mailprogramma - voeg de zojuist bewaarde PDF daar als bijlage toe.');
-  window.addEventListener('afterprint', openMail);
-  try{ window.print(); }catch(e){ openMail(); }
-  setTimeout(openMail, 20000); // vangnet: als de browser geen 'afterprint' stuurt, toch na een tijdje doorgaan
+  // Geen PDF/printstap: de klant heeft de offerte al kunnen bekijken via "Offerte bekijken"; deze knop
+  // stuurt gewoon de ontwerpgegevens en de prijs door naar Module1, gewoon als tekst in de mail.
+  window.location.href = `mailto:info@module1.nl?cc=${cc}&subject=${subject}&body=${body}`;
 });
 
 // ---- Beheer-stand voor de prijslijst (begroting) ----
