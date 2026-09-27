@@ -3367,16 +3367,11 @@ function materialenDatalistXml(){
 // De configurator op de website rekent met VERKOOPprijzen. Die worden hier uit jullie eigen materialenlijst (inkoop),
 // marge, zaagverlies, kantoorkosten en uurtarief berekend en gepubliceerd in Firestore (publiek/tarieven). De website
 // leest dat document en krijgt dus nooit de inkoopprijzen of de marge te zien.
+// De KLEUREN (plaatmaterialen) zijn hier vrij toe te voegen/verwijderen (w.kleuren) - de website bouwt zijn hele
+// kleurenlijst opnieuw op uit wat hier online staat. Het overige BESLAG (scharnier, greep, roede, ...) is een vaste
+// lijst, want dat zijn ingebouwde onderdelen van de configurator zelf.
 let webPubKlaar = false;
 const WEB_ITEMS = [
-  {key:'mat:gebrokenwit',     label:'Gebroken wit',    groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:wit',             label:'Wit',             groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:zwart',           label:'Zwart',           groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:antracietgrijs',  label:'Antraciet grijs', groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:beige',           label:'Beige',           groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:eikenhout',       label:'Eikenhout',       groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:notenhout',       label:'Notenhout',       groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
-  {key:'mat:zandbeige',       label:'Zandbeige',       groep:'Plaatmateriaal (prijs per m2)', eenheid:'m2'},
   {key:'priceHinge',          label:'Scharnier',                       groep:'Beslag en onderdelen', eenheid:'stuk'},
   {key:'priceHandle',         label:'Handgreep',                       groep:'Beslag en onderdelen', eenheid:'stuk'},
   {key:'priceDrawer',         label:'Lade compleet (per lade)',        groep:'Beslag en onderdelen', eenheid:'stuk'},
@@ -3388,43 +3383,66 @@ const WEB_ITEMS = [
   {key:'priceEdgeband',       label:'Kantenband',                      groep:'Beslag en onderdelen', eenheid:'m'},
   {key:'pricePlint',          label:'Plint',                           groep:'Beslag en onderdelen', eenheid:'m'}
 ];
+// standaard kleuren + hun oorspronkelijke kleurcode, alleen gebruikt om bestaande koppelingen (uit de oude, vaste
+// lijst van 8) een keer over te zetten naar de nieuwe, vrij te bewerken lijst - hierna staat alles in w.kleuren.
+const WEB_KLEUR_MIGRATIE = [
+  {oudKey:'mat:gebrokenwit',    naam:'Gebroken wit',    hex:'#f2efe6'},
+  {oudKey:'mat:wit',            naam:'Wit',             hex:'#fcfcfa'},
+  {oudKey:'mat:zwart',          naam:'Zwart',           hex:'#151513'},
+  {oudKey:'mat:antracietgrijs', naam:'Antraciet grijs', hex:'#3d3f41'},
+  {oudKey:'mat:beige',          naam:'Beige',           hex:'#cdb99a'},
+  {oudKey:'mat:eikenhout',      naam:'Eikenhout',       hex:'#c19a6b'},
+  {oudKey:'mat:notenhout',      naam:'Notenhout',       hex:'#5b3a29'},
+  {oudKey:'mat:zandbeige',      naam:'Zandbeige',       hex:'#e3caa0'}
+];
+function webKleurUid(){ return 'kleur_' + Math.random().toString(36).slice(2,9); }
 function webKoppeling(){
   const i = state.instellingen;
-  if(!i.webKoppeling) i.webKoppeling = { items:{}, zaagverliesPct:20, urenPerPlank:0.25, urenPerModule:0, laatstGepubliceerd:'', laatsteHash:'' };
+  if(!i.webKoppeling) i.webKoppeling = { items:{}, kleuren:null, zaagverliesPct:20, urenPerPlank:0.25, urenPerModule:0, laatstGepubliceerd:'', laatsteHash:'' };
   const w = i.webKoppeling;
   if(!w.items) w.items = {};
   if(w.zaagverliesPct === undefined) w.zaagverliesPct = 20;
   if(w.urenPerPlank === undefined) w.urenPerPlank = 0.25;
   if(w.urenPerModule === undefined) w.urenPerModule = 0;
+  if(!w.kleuren){
+    // eenmalige migratie: de 8 vaste kleuren uit de oude koppeling overzetten naar de nieuwe, vrije lijst
+    w.kleuren = WEB_KLEUR_MIGRATIE.map(m => {
+      const oud = w.items[m.oudKey] || {};
+      delete w.items[m.oudKey];
+      return { id: webKleurUid(), naam: m.naam, hex: m.hex, materiaalId: oud.materiaalId || '', deler: oud.deler || 1, handmatig: oud.handmatig === undefined ? '' : oud.handmatig };
+    });
+  }
   return w;
+}
+function webInkoopVan(materiaalId, deler, handmatig){
+  if(materiaalId){
+    const m = state.materialen.find(x => x.id === materiaalId);
+    if(m) return (parseFloat(m.prijs) || 0) / (parseFloat(deler) || 1);
+    return 0;
+  }
+  return parseFloat(handmatig) || 0;
 }
 function webInkoop(item){
   const w = webKoppeling();
   const k = w.items[item.key] || {};
-  if(k.materiaalId){
-    const m = state.materialen.find(x => x.id === k.materiaalId);
-    if(m) return (parseFloat(m.prijs) || 0) / (parseFloat(k.deler) || 1);
-    return 0;
-  }
-  return parseFloat(k.handmatig) || 0;
+  return webInkoopVan(k.materiaalId, k.deler, k.handmatig);
 }
-function webVerkoop(item){
+function webVerkoopBedrag(inkoop, magZaagverlies){
   const i = state.instellingen, w = webKoppeling();
   const marge = 1 + (i.materiaalmarge || 0) / 100;
   const kantoor = 1 + (i.kantoorkosten || 0) / 100;
-  const zaag = item.key.indexOf('mat:') === 0 ? 1 + (w.zaagverliesPct || 0) / 100 : 1;
-  return webInkoop(item) * zaag * marge * kantoor;
+  const zaag = magZaagverlies ? 1 + (w.zaagverliesPct || 0) / 100 : 1;
+  return inkoop * zaag * marge * kantoor;
 }
+function webVerkoop(item){ return webVerkoopBedrag(webInkoop(item), true); }
+function webKleurVerkoop(k){ return webVerkoopBedrag(webInkoopVan(k.materiaalId, k.deler, k.handmatig), true); }
 function webRond(v){ return Math.round((v || 0) * 100) / 100; }
 function bouwWebTarieven(){
   const i = state.instellingen, w = webKoppeling();
   const kantoor = 1 + (i.kantoorkosten || 0) / 100;
-  const materialPrices = {};
+  const materialen = w.kleuren.filter(k => k.naam && k.naam.trim()).map(k => ({ id:k.id, naam:k.naam.trim(), hex:k.hex||'#cccccc', prijs: webRond(webKleurVerkoop(k)) }));
   const otherPrices = {};
-  WEB_ITEMS.forEach(item => {
-    const v = webRond(webVerkoop(item));
-    if(item.key.indexOf('mat:') === 0) materialPrices[item.key.slice(4)] = v; else otherPrices[item.key] = v;
-  });
+  WEB_ITEMS.forEach(item => { otherPrices[item.key] = webRond(webVerkoop(item)); });
   // de website gebruikt uitsluitend deze verkoopprijzen: marge en zaagverlies zitten er al in, dus 0 op de site
   otherPrices.laborRate = webRond((i.uurtarief || 0) * kantoor);
   otherPrices.laborHoursPerShelf = parseFloat(w.urenPerPlank) || 0;
@@ -3432,7 +3450,7 @@ function bouwWebTarieven(){
   otherPrices.materialMarginPct = 0;
   otherPrices.wastePct = 0;
   otherPrices.btwPct = i.btw || 0;
-  return { materialPrices, otherPrices };
+  return { materialen, otherPrices };
 }
 let webPubTimer = null;
 function publiceerWebTarievenDebounced(){
@@ -3442,7 +3460,7 @@ function publiceerWebTarievenDebounced(){
 }
 async function publiceerWebTarieven(stil, forceer){
   const w = webKoppeling();
-  if(!Object.keys(w.items).length){ if(!stil) showToast('Koppel eerst materialen aan de website-items'); return; }
+  if(!w.kleuren.some(k => k.naam && k.naam.trim())){ if(!stil) showToast('Voeg eerst minstens 1 kleur toe'); return; }
   const prijzen = bouwWebTarieven();
   const hash = JSON.stringify(prijzen);
   if(!forceer && w.laatsteHash === hash) return; // niets veranderd
@@ -3462,29 +3480,51 @@ function viewWebprijzen(){
   const mats = [...state.materialen].sort((a,b)=> (a.naam||'').localeCompare(b.naam||''));
   const opties = (sel) => `<option value="">(zelf invullen)</option>` + mats.map(m =>
     `<option value="${m.id}" ${m.id===sel?'selected':''}>${esc(m.naam)} - ${euro(m.prijs)}${m.eenheid? ' / '+esc(m.eenheid):''}</option>`).join('');
+  const kleurRijen = w.kleuren.map((k, idx) => `<tr data-kleur-rij="${k.id}">
+      <td><input type="color" data-kleur-hex="${k.id}" value="${k.hex||'#cccccc'}" style="width:40px;height:32px;padding:0;border:1px solid var(--border);"></td>
+      <td><input type="text" data-kleur-naam="${k.id}" value="${esc(k.naam)}" placeholder="Naam van de kleur" style="width:100%;"></td>
+      <td><select data-kleur-mat="${k.id}" style="width:100%;">${opties(k.materiaalId||'')}</select></td>
+      <td><input type="number" step="0.01" min="0" data-kleur-deler="${k.id}" value="${k.deler||1}" style="width:70px;" title="Prijs uit de lijst delen door dit getal (bijv. 2,98 voor een hele plaat van 2,98 m2)"></td>
+      <td><input type="number" step="0.01" min="0" data-kleur-hand="${k.id}" value="${k.handmatig===''||k.handmatig===undefined?'':k.handmatig}" style="width:80px;" placeholder="inkoop"></td>
+      <td style="text-align:right;white-space:nowrap;" id="web-vk-${k.id}">${euro(webKleurVerkoop(k))}</td>
+      <td><button type="button" class="btn btn-ghost btn-sm btn-danger" data-kleur-verwijder="${k.id}">Verwijderen</button></td>
+    </tr>`).join('');
   let groep = '';
-  const rijen = WEB_ITEMS.map(item => {
-    const k = w.items[item.key] || {};
+  const beslagRijen = WEB_ITEMS.map(item => {
     let kop = '';
     if(item.groep !== groep){ groep = item.groep; kop = `<tr><td colspan="5" style="background:var(--sidebar-bg);font-weight:700;font-size:12px;letter-spacing:.4px;">${esc(groep)}</td></tr>`; }
+    const k = w.items[item.key] || {};
     return kop + `<tr data-web-rij="${item.key}">
       <td>${esc(item.label)} <span style="color:var(--text-muted);font-size:11px;">per ${item.eenheid}</span></td>
       <td><select data-web-mat="${item.key}" style="width:100%;">${opties(k.materiaalId||'')}</select></td>
-      <td><input type="number" step="0.01" min="0" data-web-deler="${item.key}" value="${k.deler||1}" style="width:80px;" title="Prijs uit de lijst delen door dit getal (bijv. 2,98 voor een hele plaat van 2,98 m2)"></td>
+      <td><input type="number" step="0.01" min="0" data-web-deler="${item.key}" value="${k.deler||1}" style="width:80px;" title="Prijs uit de lijst delen door dit getal"></td>
       <td><input type="number" step="0.01" min="0" data-web-hand="${item.key}" value="${k.handmatig||''}" style="width:90px;" placeholder="inkoop"></td>
-      <td style="text-align:right;white-space:nowrap;" id="web-vk-${item.key.replace(':','_')}">${euro(webVerkoop(item))}</td>
+      <td style="text-align:right;white-space:nowrap;" id="web-vk-${item.key}">${euro(webVerkoop(item))}</td>
     </tr>`;
   }).join('');
   const regels = `match /publiek/{document} {\n  allow read: if true;\n  allow write: if request.auth != null;\n}`;
   return `
     <h1 class="page-title">Website-prijzen</h1>
-    <p class="page-sub">Kies per onderdeel welk materiaal uit jullie Materialen-lijst erbij hoort. De verkoopprijs voor de website wordt automatisch berekend (inkoop x zaagverlies x marge x kantoorkosten) en meteen op de website gezet. Op de website zie je nooit de inkoopprijs of marge.</p>
+    <p class="page-sub">Hier bepaal je precies welke kleuren en prijzen de bezoekers van de website zien. Voeg zelf kleuren toe of verwijder ze - de website neemt dat automatisch over. De verkoopprijs (inkoop x zaagverlies x marge x kantoorkosten) wordt zelf berekend; op de website zie je nooit de inkoopprijs of de marge.</p>
+
     <div class="panel">
+      <h2 style="font-size:16px;font-weight:600;margin:0 0 10px;">Kleuren (plaatmateriaal) op de website</h2>
       <table>
-        <thead><tr><th>Onderdeel</th><th>Materiaal uit lijst</th><th>Delen door</th><th>Zelf invullen (inkoop)</th><th style="text-align:right;">Verkoop (website)</th></tr></thead>
-        <tbody>${rijen}</tbody>
+        <thead><tr><th>Kleur</th><th>Naam op de website</th><th>Materiaal uit de lijst</th><th>Delen door</th><th>Zelf invullen (inkoop)</th><th style="text-align:right;">Verkoop</th><th></th></tr></thead>
+        <tbody>${kleurRijen}</tbody>
+      </table>
+      <button type="button" class="btn" id="btn-kleur-toevoegen" style="margin-top:12px;">+ Kleur toevoegen</button>
+      <p class="info-line" style="margin-top:8px;">Een kleur verwijderen kan altijd. Een klant die op dit moment die kleur al in zijn ontwerp heeft gekozen, ziet dan automatisch de eerst overgebleven kleur.</p>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <h2 style="font-size:16px;font-weight:600;margin:0 0 10px;">Beslag en onderdelen</h2>
+      <table>
+        <thead><tr><th>Onderdeel</th><th>Materiaal uit lijst</th><th>Delen door</th><th>Zelf invullen (inkoop)</th><th style="text-align:right;">Verkoop</th></tr></thead>
+        <tbody>${beslagRijen}</tbody>
       </table>
     </div>
+
     <div class="panel" style="margin-top:14px;">
       <h2 style="font-size:16px;font-weight:600;margin:0 0 10px;">Overige instellingen voor de website</h2>
       <div class="field-row">
@@ -3492,12 +3532,12 @@ function viewWebprijzen(){
         <div class="field"><label>Uren per plank (arbeid)</label><input type="number" step="0.05" id="web-urenplank" value="${w.urenPerPlank}"></div>
         <div class="field"><label>Uren per module (arbeid)</label><input type="number" step="0.05" id="web-urenmodule" value="${w.urenPerModule}"></div>
       </div>
-      <p class="info-line">Uit Instellingen: uurtarief ${euro(i.uurtarief)} &nbsp;·&nbsp; materiaalmarge ${i.materiaalmarge}% &nbsp;·&nbsp; kantoorkosten ${i.kantoorkosten}% &nbsp;·&nbsp; btw ${i.btw}% &nbsp; <a class="breadcrumb" data-nav="instellingen" style="display:inline;">(aanpassen)</a></p>
+      <p class="info-line">Uit Instellingen: uurtarief ${euro(i.uurtarief)} &nbsp;&middot;&nbsp; materiaalmarge ${i.materiaalmarge}% &nbsp;&middot;&nbsp; kantoorkosten ${i.kantoorkosten}% &nbsp;&middot;&nbsp; btw ${i.btw}% &nbsp; <a class="breadcrumb" data-nav="instellingen" style="display:inline;">(aanpassen)</a></p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;">
         <button class="btn btn-primary" id="btn-web-opslaan">Opslaan en publiceren op de website</button>
         <span class="info-line" style="margin:0;">${w.laatstGepubliceerd ? 'Laatst gepubliceerd: ' + new Date(w.laatstGepubliceerd).toLocaleString('nl-NL') : 'Nog niet gepubliceerd'}</span>
       </div>
-      <p class="info-line" style="margin-top:10px;">Daarna worden wijzigingen in de Materialen-lijst of bij Instellingen (uurtarief, marge, kantoorkosten, btw) automatisch doorgezet naar de website zolang deze app open staat.</p>
+      <p class="info-line" style="margin-top:10px;">Daarna worden wijzigingen (kleuren, materialen, uurtarief, marge, kantoorkosten, btw) automatisch doorgezet naar de website zolang deze app open staat.</p>
     </div>
     <div class="panel" style="margin-top:14px;">
       <h2 style="font-size:16px;font-weight:600;margin:0 0 6px;">Eenmalig: Firebase-regel toevoegen</h2>
@@ -3508,6 +3548,16 @@ function viewWebprijzen(){
 function attachWebprijzenHandlers(main){
   const w = webKoppeling();
   const bewaarVanFormulier = () => {
+    w.kleuren.forEach(k => {
+      const naam = main.querySelector(`[data-kleur-naam="${k.id}"]`);
+      const hex = main.querySelector(`[data-kleur-hex="${k.id}"]`);
+      const mat = main.querySelector(`[data-kleur-mat="${k.id}"]`);
+      const deler = main.querySelector(`[data-kleur-deler="${k.id}"]`);
+      const hand = main.querySelector(`[data-kleur-hand="${k.id}"]`);
+      if(!naam) return;
+      k.naam = naam.value; k.hex = hex.value || '#cccccc'; k.materiaalId = mat.value || '';
+      k.deler = parseFloat(deler.value) || 1; k.handmatig = hand.value === '' ? '' : (parseFloat(hand.value) || 0);
+    });
     WEB_ITEMS.forEach(item => {
       const mat = main.querySelector(`[data-web-mat="${item.key}"]`);
       const deler = main.querySelector(`[data-web-deler="${item.key}"]`);
@@ -3522,14 +3572,25 @@ function attachWebprijzenHandlers(main){
   };
   const werkVoorbeeldBij = () => {
     bewaarVanFormulier();
-    WEB_ITEMS.forEach(item => {
-      const el = document.getElementById('web-vk-' + item.key.replace(':','_'));
-      if(el) el.textContent = euro(webVerkoop(item));
-    });
+    w.kleuren.forEach(k => { const el = document.getElementById('web-vk-' + k.id); if(el) el.textContent = euro(webKleurVerkoop(k)); });
+    WEB_ITEMS.forEach(item => { const el = document.getElementById('web-vk-' + item.key); if(el) el.textContent = euro(webVerkoop(item)); });
   };
-  main.querySelectorAll('[data-web-mat],[data-web-deler],[data-web-hand],#web-zaag,#web-urenplank,#web-urenmodule').forEach(el => {
+  main.querySelectorAll('[data-kleur-naam],[data-kleur-hex],[data-kleur-mat],[data-kleur-deler],[data-kleur-hand],[data-web-mat],[data-web-deler],[data-web-hand],#web-zaag,#web-urenplank,#web-urenmodule').forEach(el => {
     el.addEventListener('input', werkVoorbeeldBij);
     el.addEventListener('change', werkVoorbeeldBij);
+  });
+  document.getElementById('btn-kleur-toevoegen').addEventListener('click', () => {
+    bewaarVanFormulier();
+    w.kleuren.push({ id: webKleurUid(), naam: 'Nieuwe kleur', hex: '#cccccc', materiaalId: '', deler: 1, handmatig: '' });
+    render();
+  });
+  main.querySelectorAll('[data-kleur-verwijder]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(!confirm('Deze kleur van de website verwijderen?')) return;
+      bewaarVanFormulier();
+      w.kleuren = w.kleuren.filter(k => k.id !== btn.dataset.kleurVerwijder);
+      render();
+    });
   });
   document.getElementById('btn-web-opslaan').addEventListener('click', async () => {
     bewaarVanFormulier();
