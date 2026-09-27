@@ -248,6 +248,7 @@
     <div class="nav-item" data-view="uren"><span class="dot"></span>Uren</div>
     <div class="nav-item" data-view="materialen"><span class="dot"></span>Materialen</div>
     <div class="nav-item" data-view="webprijzen"><span class="dot"></span>Website-prijzen</div>
+    <div class="nav-item" data-view="bestellingen"><span class="dot"></span>Bestellingen</div>
     <div class="nav-item" data-view="planning"><span class="dot"></span>Planning</div>
     <div class="nav-item" data-view="btw"><span class="dot"></span>Btw</div>
     <div class="nav-item" data-view="backup"><span class="dot"></span>Back-up</div>
@@ -302,7 +303,7 @@ const STORAGE_KEY = 'werkplaats-administratie-data';
 async function loadState(){
   state = defaultState();
   return new Promise((resolve)=>{
-    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false, planning:false};
+    let ontvangen = {klanten:false, projecten:false, offertes:false, facturen:false, instellingen:false, counters:false, werknemers:false, urenregistraties:false, materialen:false, planning:false, bestellingen:false};
     function checkKlaar(){
       if(Object.values(ontvangen).every(Boolean)) resolve();
     }
@@ -322,6 +323,11 @@ async function loadState(){
       ontvangen.materialen = true; checkKlaar();
       if(document.getElementById('app')) render();
     }, err=> console.error('materialen', err)));
+    onSnapshotUnsubs.push(db.collection('bestellingen').onSnapshot(snap=>{
+      state.bestellingen = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      ontvangen.bestellingen = true; checkKlaar();
+      if(document.getElementById('app')) render();
+    }, err=> console.error('bestellingen', err)));
     onSnapshotUnsubs.push(db.collection('planning').onSnapshot(snap=>{
       state.planning = snap.docs.map(d=>({id:d.id, ...d.data()}));
       ontvangen.planning = true; checkKlaar();
@@ -367,6 +373,7 @@ function normaliseerState(){
   if(!state.werknemers) state.werknemers = [];
   if(!state.urenregistraties) state.urenregistraties = [];
   if(!state.materialen) state.materialen = [];
+  if(!state.bestellingen) state.bestellingen = [];
   if(!state.planning) state.planning = [];
   if(!state.counters) state.counters = {klant:0, project:0, offerte:0, factuur:0};
   if(!state.instellingen) state.instellingen = { uurtarief:65, materiaalmarge:30, btw:21, kantoorkosten:5,
@@ -603,6 +610,7 @@ function render(){
   else if(currentView === 'uren') main.innerHTML = viewUren();
   else if(currentView === 'materialen') main.innerHTML = viewMaterialen();
   else if(currentView === 'webprijzen') main.innerHTML = viewWebprijzen();
+  else if(currentView === 'bestellingen') main.innerHTML = viewBestellingen();
   else if(currentView === 'planning') main.innerHTML = viewPlanning();
   else if(currentView === 'btw') main.innerHTML = viewBtw();
   else if(currentView === 'backup') main.innerHTML = viewBackup();
@@ -2103,6 +2111,7 @@ function attachViewHandlers(){
   }
 
   if(currentView === 'webprijzen') attachWebprijzenHandlers(main);
+  if(currentView === 'bestellingen') attachBestellingenHandlers(main);
 
   if(currentView === 'planning'){
     main.querySelectorAll('[data-open-project]').forEach(row=>{
@@ -3657,6 +3666,155 @@ function attachWebprijzenHandlers(main){
     catch(e){ showToast('Opslaan mislukt: ' + e.message); return; }
     await publiceerWebTarieven(false, true);
   });
+}
+
+/* ===================== BESTELLINGEN (binnengekomen via de website-configurator) ===================== */
+// Een bestelling komt rechtstreeks van de website (collectie 'bestellingen', publiek aan te maken maar
+// alleen door de beheerder te lezen/wijzigen). Elke bestelling bevat de klantgegevens, het volledige
+// ontwerp als tekst, een kant-en-klare offerte-PDF-pagina (offerteHtml, exact wat de klant zag) en een
+// STL-bestand van de hele kast (stlBase64, in mm) voor productie/CNC.
+let bestellingZoek = '';
+function bestellingById(id){ return state.bestellingen.find(b => b.id === id); }
+const BESTELLING_STATUS_MAP = { nieuw:'badge-amber', bekeken:'badge-amber', geimporteerd:'badge-sage', afgewezen:'badge-rust' };
+const BESTELLING_STATUS_LABEL = { nieuw:'Nieuw', bekeken:'Bekeken', geimporteerd:'Geimporteerd', afgewezen:'Afgewezen' };
+function viewBestellingen(){
+  const q = bestellingZoek.toLowerCase();
+  const lijst = [...state.bestellingen].filter(b => {
+    const naam = (b.klant && b.klant.naam) || '';
+    return !q || naam.toLowerCase().includes(q) || (b.opstelling||'').toLowerCase().includes(q);
+  }).sort((a,b) => (b.aangemaaktOp||'').localeCompare(a.aangemaaktOp||''));
+  return `
+    <h1 class="page-title">Bestellingen</h1>
+    <p class="page-sub">Rechtstreeks binnengekomen vanaf de website-configurator: klantgegevens, ontwerp, offerte-PDF en een STL-bestand van de kast.</p>
+    <div class="toolbar">
+      <input class="search-input" id="bestelling-zoek" placeholder="Zoek op naam of opstelling..." value="${esc(bestellingZoek)}">
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr><th>Datum</th><th>Klant</th><th>Opstelling</th><th style="text-align:right;">Totaal (excl. btw)</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${lijst.length ? lijst.map(b => `
+            <tr data-open-bestelling="${b.id}">
+              <td>${fmtDate((b.aangemaaktOp||'').slice(0,10))}</td>
+              <td>${esc((b.klant && b.klant.naam) || '-')}</td>
+              <td>${esc(b.opstelling||'-')}</td>
+              <td style="text-align:right;">${euro(b.totaalExclBtw)}</td>
+              <td>${statusBadge(BESTELLING_STATUS_LABEL[b.status] || b.status || 'Nieuw', Object.fromEntries(Object.entries(BESTELLING_STATUS_LABEL).map(([k,v]) => [v, BESTELLING_STATUS_MAP[k]])))}</td>
+              <td><div class="row-actions" style="opacity:1;"><button class="btn btn-ghost btn-sm btn-danger" data-del-bestelling="${b.id}">Verwijderen</button></div></td>
+            </tr>`).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="title">Nog geen bestellingen</div>Zodra iemand op de website op "Bestelling plaatsen" klikt, verschijnt die hier.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+function downloadBestand(naam, data, type){
+  const blob = data instanceof Blob ? data : new Blob([data], { type: type || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = naam;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+function base64ToBlob(base64, type){
+  const bin = atob(base64 || '');
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+// opent de offerte als PDF-achtige pagina in een nieuw tabblad (identiek aan wat de klant zag) - vanuit
+// die pagina kan met de gewone print-/deelfunctie een echte PDF bewaard worden
+function bekijkOfferte(id){
+  const b = bestellingById(id);
+  if(!b || !b.offerteHtml){ showToast('Geen offerte-document gevonden bij deze bestelling'); return; }
+  const blob = new Blob([b.offerteHtml], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  if(b.status === 'nieuw'){ db.collection('bestellingen').doc(id).update({ status:'bekeken' }).catch(()=>{}); }
+}
+function downloadStl(id){
+  const b = bestellingById(id);
+  if(!b || !b.stlBase64){ showToast('Geen STL-bestand gevonden bij deze bestelling'); return; }
+  downloadBestand(`Bestelling-${id}.stl`, base64ToBlob(b.stlBase64, 'model/stl'), 'model/stl');
+}
+async function verwijderBestelling(id){
+  if(!confirm('Deze bestelling verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
+  try{ await db.collection('bestellingen').doc(id).delete(); showToast('Bestelling verwijderd'); }
+  catch(e){ showToast('Verwijderen mislukt: ' + e.message); }
+}
+// zet een bestelling om in een klant + project, met per module alvast een begrotings-onderdeel (naam +
+// afmeting) klaargezet - de materiaal-/urenregels (en dus de eigen inkoopprijzen) vul je zelf in, precies
+// zoals bij een normaal project.
+async function importeerBestelling(id){
+  const b = bestellingById(id);
+  if(!b) return;
+  if(b.status === 'geimporteerd' && b.projectId){ navigate('project-detail', { id: b.projectId }); return; }
+  if(!confirm('Van deze bestelling een klant en project maken?')) return;
+  const email = ((b.klant && b.klant.email) || '').trim().toLowerCase();
+  let klant = email ? state.klanten.find(k => (k.email||'').trim().toLowerCase() === email) : null;
+  try{
+    if(!klant){
+      klant = {
+        id: nextKlantNummer(), type: 'Particulier', contactpersoon: '',
+        naam: (b.klant && b.klant.naam) || '', email: (b.klant && b.klant.email) || '',
+        telefoon: (b.klant && b.klant.telefoon) || '', adres: (b.klant && b.klant.adres) || '',
+        postcode: (b.klant && b.klant.postcode) || '', plaats: (b.klant && b.klant.plaats) || ''
+      };
+      await db.collection('klanten').doc(klant.id).set(klant);
+    }
+    const projectId = nextWerkNummer();
+    // de website stuurt het ontwerp als leesbare tekst mee (b.ontwerpTekst, met per module de afmeting,
+    // indeling en materiaal) - die zet je hieronder in de opmerkingen; hier alvast 1 onderdeel klaarzetten
+    // om de begroting mee te beginnen, de materiaal-/urenregels vul je zelf in met je eigen inkoopprijzen
+    const onderdelen = [{ id: uid(), naam: 'Vanaf website (zie opmerkingen hieronder)', afmetingen: '', materiaalregels: [], urenregels: [] }];
+    const project = {
+      id: projectId, klantId: klant.id, status: 'Nieuw', startdatum: todayISO(),
+      omschrijving: 'Website-bestelling - ' + (b.opstelling || ''),
+      begroting: { onderdelen, opmerkingen: b.ontwerpTekst || '' }
+    };
+    await db.collection('projecten').doc(projectId).set(project);
+    await db.collection('bestellingen').doc(id).update({ status: 'geimporteerd', projectId });
+    await saveCountersOnly();
+    showToast(`Klant en project ${projectId} aangemaakt vanuit de bestelling`);
+    navigate('project-detail', { id: projectId });
+  }catch(e){
+    showToast('Importeren mislukt: ' + e.message);
+  }
+}
+async function saveCountersOnly(){ try{ await db.collection('meta').doc('counters').set(state.counters); }catch(e){} }
+function attachBestellingenHandlers(main){
+  const zoek = document.getElementById('bestelling-zoek');
+  if(zoek) zoek.addEventListener('input', (e) => { bestellingZoek = e.target.value; render(); zoek_focus && zoek_focus(); });
+  main.querySelectorAll('[data-open-bestelling]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if(e.target.closest('[data-del-bestelling]')) return;
+      openBestellingDetail(row.dataset.openBestelling);
+    });
+  });
+  main.querySelectorAll('[data-del-bestelling]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); verwijderBestelling(btn.dataset.delBestelling); });
+  });
+}
+function openBestellingDetail(id){
+  const b = bestellingById(id);
+  if(!b) return;
+  const yn = v => v || 'onbekend';
+  openModal(`
+    <h2>Bestelling - ${esc((b.klant && b.klant.naam) || '')}</h2>
+    <p class="info-line">${esc((b.klant && b.klant.email) || '')} &nbsp;&middot;&nbsp; ${esc((b.klant && b.klant.telefoon) || '')}</p>
+    <p class="info-line">${esc((b.klant && b.klant.adres) || '')} ${esc((b.klant && b.klant.postcode) || '')} ${esc((b.klant && b.klant.plaats) || '')}</p>
+    <p class="info-line">Laten inmeten: ${esc(yn(b.inmeten))} &nbsp;&middot;&nbsp; Laten monteren: ${esc(yn(b.monteren))}</p>
+    <p class="info-line">Totaal: ${euro(b.totaalExclBtw)} excl. btw &nbsp;&middot;&nbsp; ${euro(b.totaalInclBtw)} incl. btw</p>
+    <pre style="max-height:220px;overflow:auto;background:var(--sidebar-bg);padding:10px;border-radius:6px;font-size:11.5px;white-space:pre-wrap;">${esc(b.ontwerpTekst || '')}</pre>
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button type="button" class="btn" id="modal-cancel">Sluiten</button>
+      <button type="button" class="btn" id="btn-bestelling-offerte">Offerte bekijken (PDF)</button>
+      <button type="button" class="btn" id="btn-bestelling-stl" ${b.stlBase64 ? '' : 'disabled'}>STL downloaden</button>
+      <button type="button" class="btn btn-primary" id="btn-bestelling-import">${b.status === 'geimporteerd' ? 'Naar project' : 'Importeren naar project'}</button>
+    </div>
+  `);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('btn-bestelling-offerte').addEventListener('click', () => bekijkOfferte(id));
+  document.getElementById('btn-bestelling-stl').addEventListener('click', () => downloadStl(id));
+  document.getElementById('btn-bestelling-import').addEventListener('click', () => { closeModal(); importeerBestelling(id); });
 }
 
 /* ===================== UREN (overzicht) ===================== */
