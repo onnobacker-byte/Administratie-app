@@ -387,8 +387,16 @@
   #configuratorEmbed .cs-more-body {padding-top:10px;}
   #configuratorEmbed .cs-more-body .extra-row {margin-bottom:8px;}
 
-  /* STAPPENPLAN */  #configuratorEmbed .wizard {display:flex;gap:32px;align-items:flex-start;}
-  #configuratorEmbed .wizard-rail {display:flex;flex-direction:column;align-items:center;padding-top:6px;flex-shrink:0;position:sticky;top:96px;}
+  /* STAPPENPLAN */  #configuratorEmbed .wizard {display:flex;gap:28px;align-items:flex-start;}
+  #configuratorEmbed .wizard-rail {display:flex;flex-direction:column;align-items:flex-start;padding-top:6px;flex-shrink:0;position:sticky;top:96px;}
+  /* elke stap = bolletje met nummer + naam ernaast (op smalle schermen eronder, zie max-width:900px) */
+  #configuratorEmbed .wizard-item {display:flex;align-items:center;gap:10px;}
+  #configuratorEmbed .wizard-item .wizard-dot {margin:0 2px;}
+  #configuratorEmbed .wizard-item .wizard-dot.active {margin:0;}
+  #configuratorEmbed .wizard-label {font-family:Arial,Helvetica,sans-serif;font-size:12px;color:var(--graphite);cursor:pointer;white-space:nowrap;user-select:none;}
+  #configuratorEmbed .wizard-label.active {color:var(--ink);font-weight:700;}
+  #configuratorEmbed .wizard-label.locked {opacity:.4;cursor:not-allowed;}
+  #configuratorEmbed .wizard-rail .wizard-connector {margin-left:21px;}
   #configuratorEmbed .wizard-dot {width:40px;height:40px;border-radius:50%;border:2px solid var(--line);background:#fff;color:var(--graphite);font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s ease;}
   #configuratorEmbed .wizard-dot.active {background:var(--ink);border-color:var(--ink);color:var(--paper);width:44px;height:44px;}
   #configuratorEmbed .wizard-dot.done {background:var(--oak);border-color:var(--oak);color:#fff;}
@@ -401,17 +409,22 @@
   /* live voorbeeld — staat vanaf stap 1 groot en blijft op ELKE stap in beeld terwijl je scrolt (net
      als de stappenbalk). Dit is dezelfde node als het echte, klikbare vooraanzicht/3D uit de oude
      stap "Indeling" — die stond eerst los in de stap-inhoud, nu hoort 'm permanent hier thuis. */
-  #configuratorEmbed .wizard-preview {flex-shrink:0;width:580px;position:sticky;top:96px;max-height:calc(100vh - 116px);overflow-y:auto;}
+  #configuratorEmbed .wizard-preview {flex-shrink:0;width:520px;position:sticky;top:96px;max-height:calc(100vh - 116px);overflow-y:auto;}
   #configuratorEmbed .wizard-preview-title {font-weight:700;font-size:15px;margin-bottom:10px;}
   #configuratorEmbed .wizard-preview .stage {padding:16px;min-height:auto;display:flex;align-items:center;justify-content:center;}
   #configuratorEmbed .wizard-preview svg {max-width:100%;}
   #configuratorEmbed .wizard-preview-price {display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--radius-card);padding:14px 18px;margin-top:12px;}
+  /* op desktop scrollt het voorbeeld binnen zijn eigen kolom: de prijs plakt onderaan, zodat hij altijd in beeld is */
+  @media(min-width:901px){ #configuratorEmbed .wizard-preview-price {position:sticky;bottom:0;z-index:2;box-shadow:0 -6px 16px rgba(0,0,0,0.06);} }
   #configuratorEmbed .wizard-preview-price-label {font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);}
   #configuratorEmbed .wizard-preview-price-value {font-size:18px;color:var(--oak-dark);}
   @media(max-width:1250px){
     #configuratorEmbed .wizard-preview {width:420px;}
   }
-  @media(max-width:640px){
+  /* Tot 900px breed (telefoon, tablet staand, smal venster of zijpaneel) passen stappenbalk, stap-inhoud
+     en voorbeeld niet naast elkaar zonder dat alles in smalle kolommetjes wordt geperst — dan dus de
+     gestapelde opbouw: voorbeeld vastgeprikt bovenaan, stappen-rijtje eronder, stap-inhoud daaronder. */
+  @media(max-width:900px){
     /* Op mobiel staat het 3D-voorbeeld (met daaronder het stappen-rijtje) vastgeprikt bovenaan het
        scherm — blijft altijd in beeld, ook als je door de stap-inhoud eronder scrolt of naar een
        volgende stap gaat. --mobile-preview-h bepaalt hoeveel van het scherm het voorbeeld inneemt;
@@ -456,6 +469,11 @@
     #configuratorEmbed .wizard-content .mini-remove {white-space:nowrap;}
     #configuratorEmbed .wizard-dot {flex-shrink:0;}
     #configuratorEmbed .wizard-connector {width:18px;height:2px;flex-shrink:0;}
+    #configuratorEmbed .wizard-rail .wizard-connector {margin:21px 0 0;align-self:flex-start;}
+    #configuratorEmbed .wizard-item {flex-direction:column;gap:3px;flex-shrink:0;min-width:44px;}
+    #configuratorEmbed .wizard-item .wizard-dot {margin:2px 0;}
+    #configuratorEmbed .wizard-item .wizard-dot.active {margin:0;}
+    #configuratorEmbed .wizard-label {font-size:10px;}
   }
 
   /* MATERIAALKEUZE (stap 5) — grotere swatches dan de kleine cirkels in de vak-editor */
@@ -3084,10 +3102,10 @@ let cam3dTargetY = 0;
 // het 3D-voorbeeld moet net zo groot blijven als het (2D) vooraanzicht ernaast — dus geen vaste
 // 420px meer, maar meeschalen met de vensterhoogte, met dezelfde grenzen als renderCanvas2d().
 function canvas3dTargetHeight(){
-  // op mobiel (zie de @media(max-width:640px) hierboven) staat het voorbeeld vastgeprikt bovenaan in
+  // op mobiel/smal scherm (zie de @media(max-width:900px) hierboven) staat het voorbeeld vastgeprikt bovenaan in
   // een beperkte hoogte (--mobile-preview-h) — een even hoog canvas als op desktop zou dan alleen via
   // scrollen binnen dat kleine blok te zien zijn. Een compacter canvas past wél binnen dat vaste blok.
-  if(window.innerWidth <= 640) return Math.round(Math.max(150, Math.min(200, window.innerHeight*0.24)));
+  if(window.innerWidth <= 900) return Math.round(Math.max(150, Math.min(window.innerWidth <= 640 ? 200 : 260, window.innerHeight*0.28)));
   return Math.round(Math.max(420, Math.min(680, window.innerHeight*0.72)));
 }
 let dragging = false, lastX=0, lastY=0;
@@ -5124,6 +5142,7 @@ function goToWizardStep(n){
   if(wiz) wiz.scrollIntoView({behavior:'smooth', block:'start'});
 }
 const WIZARD_STEP_COUNT = 9;
+const WIZARD_STEP_NAMES = ['Type kast','Afmetingen','Indeling','Binnenopdeling','Materiaal','Verlichting','Montage','Gegevens','Ruimte'];
 function updateWizardUI(){
   // een module selecteren/bewerken kan alleen in stap 4: bij het verlaten van die stap vervalt de selectie
   if(wizardStep !== 4) selectedCell = null;
@@ -5159,12 +5178,20 @@ function renderWizardRail(){
   rail.innerHTML = steps.map((n,i)=>{
     const locked = n>=2 && !ready;
     const cls = n===wizardStep ? 'active' : (n<wizardStep ? 'done' : '');
-    const dot = `<button type="button" class="wizard-dot ${cls}" data-goto="${n}" ${locked?'disabled':''}>${n}</button>`;
-    return dot + (i<steps.length-1 ? '<div class="wizard-connector"></div>' : '');
+    const name = WIZARD_STEP_NAMES[i] || '';
+    const dot = `<button type="button" class="wizard-dot ${cls}" ${locked?'disabled':`data-goto="${n}"`} title="Stap ${n}: ${name}" aria-label="Stap ${n}: ${name}">${n}</button>`;
+    const label = `<span class="wizard-label ${n===wizardStep?'active':''} ${locked?'locked':''}" ${locked?'':`data-goto="${n}"`} aria-hidden="true">${name}</span>`;
+    return `<div class="wizard-item">${dot}${label}</div>` + (i<steps.length-1 ? '<div class="wizard-connector"></div>' : '');
   }).join('');
   rail.querySelectorAll('[data-goto]').forEach(btn=>{
     btn.addEventListener('click', ()=> goToWizardStep(Number(btn.dataset.goto)));
   });
+  // op smalle schermen is het rijtje horizontaal scrollbaar: houd de huidige stap in beeld
+  const activeItem = rail.querySelector('.wizard-dot.active');
+  if(activeItem && rail.scrollWidth > rail.clientWidth){
+    const item = activeItem.parentElement;
+    rail.scrollLeft = Math.max(0, item.offsetLeft - (rail.clientWidth - item.offsetWidth)/2);
+  }
 }
 // Stap 5: één materiaal voor de hele (actieve) wand ineens — fijnere per-vak afwijkingen blijven via
 // de vak-editor in stap 4 mogelijk (zie applyMaterialToCurrentWall, ook gebruikt door "Vertel wat je
