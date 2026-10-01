@@ -409,17 +409,10 @@
   #configuratorEmbed .row-parts .stepper-btn {width:30px;height:28px;font-size:15px;border-radius:999px;border:1.5px solid var(--line);}
   #configuratorEmbed .row-parts strong {min-width:16px;text-align:center;color:var(--ink);}
   @media(max-width:640px){ #configuratorEmbed .row-parts {padding-left:0;} }
-  #configuratorEmbed .row-sizes {flex-basis:100%;margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:12px;}
-  #configuratorEmbed .row-sizes summary {cursor:pointer;color:var(--ink);font-weight:700;padding:2px 0;}
-  #configuratorEmbed .row-sizes-body {margin-top:8px;padding:10px 12px;background:#faf9f6;border:1px solid var(--line);border-radius:var(--radius-field);}
-  #configuratorEmbed .part-size {display:grid;grid-template-columns:auto auto;justify-content:start;align-items:center;gap:4px 16px;margin-bottom:10px;color:var(--graphite);}
-  #configuratorEmbed .part-size > span {grid-column:1/-1;font-weight:700;color:var(--ink);}
-  #configuratorEmbed .part-size label {display:flex;align-items:center;gap:5px;white-space:nowrap;}
-  #configuratorEmbed .part-size input {width:64px;padding:6px 8px;border:1.5px solid var(--line);border-radius:var(--radius-pill);text-align:center;background:#fff;color:var(--ink);font-size:13px;}
-  #configuratorEmbed .part-size input:disabled {background:transparent;color:var(--graphite);}
-  #configuratorEmbed .row-sizes-hint {font-size:11px;color:var(--graphite);margin:4px 0 6px;}
-  @media(max-width:640px){
-  }
+  #configuratorEmbed .row-tv {flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 0 8px 74px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:var(--graphite);}
+  #configuratorEmbed .row-tv input {width:70px;padding:6px 8px;border:1.5px solid var(--line);border-radius:var(--radius-pill);text-align:center;background:#fff;color:var(--ink);font-size:13px;}
+  #configuratorEmbed .tv-note {font-family:Arial,Helvetica,sans-serif;font-size:12px;color:var(--ink);background:var(--sand);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:12px;}
+  @media(max-width:640px){ #configuratorEmbed .row-tv {padding-left:0;} }
 
   /* STAPPENPLAN */  #configuratorEmbed .wizard {display:flex;gap:28px;align-items:flex-start;}
   #configuratorEmbed .wizard-rail {display:flex;flex-direction:column;align-items:flex-start;padding-top:6px;flex-shrink:0;position:sticky;top:96px;}
@@ -911,7 +904,7 @@
 
           <div class="type-row" id="wallTabsRow3" style="display:none;margin-bottom:16px;"></div>
 
-          <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.<br>Per verdieping kun je ook kiezen hoeveel kastdelen er naast elkaar komen, bijvoorbeeld onderin één breed vak voor een tv.</p>
+          <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.<br>Per verdieping kun je ook kiezen hoeveel kastdelen er naast elkaar komen, of een tv-vak in het midden maken.</p>
 
           <div class="panel">
             <h2 class="section-title">Verdiepingen (op elkaar, van onder naar boven)</h2>
@@ -924,8 +917,9 @@
 
           <div class="panel">
             <h2 class="section-title">Kastdelen (naast elkaar, van links naar rechts)</h2>
+            <div class="tv-note" id="tvColNote" style="display:none;">Er zit een tv-vak in je kast. De kastdelen worden daarom automatisch verdeeld: links en rechts even breed, en boven en onder het tv-vak twee kastdelen die samen precies zo breed zijn als het tv-vak.</div>
             <div class="col-list" id="colList"></div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;" id="colButtons">
               <button class="add-btn" id="addCol">+ Kastdeel erbij</button>
               <button class="add-btn secondary" id="equalizeColsBtn" type="button">Alle kastdelen even breed</button>
             </div>
@@ -2116,68 +2110,81 @@ function setRowParts(rowId, n){
   applyRowParts();
   render();
 }
-// ---- Breedte en hoogte per kastdeel (stap 3) ----
-// Breedte = vrije breedte van dat vak (cell.widthCm, zie rowOverrideLayout): de andere kastdelen op dezelfde verdieping
-// delen de rest, dus de totale breedte blijft gelijk. Hoogte = eigen hoogte van dat vak (col.rowOverrides, zie
-// getEffectiveRowHeightsFor): de verdieping(en) erboven in die kolom passen zich aan, de totale hoogte blijft gelijk.
-const openPartSizeRows = new Set(); // welke "Maten per kastdeel"-blokken openstaan (blijft zo na het opnieuw tekenen)
-function partWidthCm(row, span){
-  const ov = rowOverrideLayout(row.id);
-  if(ov && ov[span.startIdx]) return ov[span.startIdx].w;
-  return widthOfColSpan(span.startIdx, span.endIdx);
+// ---- TV-vak in het midden (alleen bij één kastenwand) ----
+// row.tv = { widthCm }. De kast wordt dan symmetrisch opgebouwd: links en rechts kastdelen (max. 60 cm), in het midden
+// twee kastdelen die samen precies zo breed zijn als het tv-vak. Op de tv-verdieping worden die twee samengevoegd tot
+// één open tv-vak; erboven en eronder blijven het twee kastdelen naast elkaar, dus net zo breed als het tv-vak.
+// Elk vak krijgt zijn exacte breedte via widthCm (zie rowOverrideLayout), zodat 2D, 3D, prijs en offerte overal kloppen.
+function tvRow(){ return walls.length > 1 ? null : rows.find(r => r.tv); }
+function tvSupported(){ return walls.length <= 1; }
+function tvLayoutSpec(){
+  const row = tvRow();
+  if(!row) return null;
+  const W = widthBudget();
+  const tvW = Math.max(40, Math.min(Number(row.tv.widthCm) || 120, W));
+  const side = (W - tvW) / 2;
+  const nSide = side >= 10 ? Math.max(1, Math.ceil(side / MAX_MODULE_WIDTH - 1e-9)) : 0;
+  const widths = [];
+  for(let i=0; i<nSide; i++) widths.push(side / nSide);
+  widths.push(tvW/2, tvW/2);
+  for(let i=0; i<nSide; i++) widths.push(side / nSide);
+  return { row, W, tvW, nSide, widths, tvStart: nSide };
 }
-function setPartWidth(rowId, startIdx, v){
-  const spans = computeColSpans(rowId);
-  if(spans.length < 2) return;
-  const cell = getCell(rowId, cols[startIdx].id);
-  cell.widthCm = (v > 0) ? Math.max(10, v) : null;
-  // minstens één kastdeel moet de rest van de breedte kunnen opvangen
-  if(spans.every(sp => Number(getCell(rowId, cols[sp.startIdx].id).widthCm) > 0)){
-    const other = spans.slice().reverse().find(sp => sp.startIdx !== startIdx);
-    if(other) getCell(rowId, cols[other.startIdx].id).widthCm = null;
-  }
-  render();
+function applyTvLayout(){
+  const spec = tvLayoutSpec();
+  if(!spec) return;
+  const sig = spec.W.toFixed(2) + '|' + spec.tvW.toFixed(2) + '|' + rows.map(r=>r.id).join(',') + '|' + cols.map(c=>c.id+':'+c.width.toFixed(2)).join(',');
+  if(spec.row.tvSig === sig) return;
+  // kolommen opnieuw opbouwen (bestaande kolommen hergebruiken, zodat de inhoud van de vakken zoveel mogelijk blijft)
+  cols = spec.widths.map((w, i) => {
+    const old = cols[i];
+    return old ? Object.assign(old, { width:w, depth:old.depth || globalDepth, isFiller:false }) : { id:uid('c'), width:w, depth:globalDepth, isFiller:false };
+  });
+  lockedTotalWidth = spec.W + marginLeftCm + marginRightCm + endLeftCm() + endRightCm();
+  rows.forEach(r => {
+    r.parts = null; r.partsSig = null;
+    const isTv = (r === spec.row);
+    // vakken van deze verdieping: op de tv-verdieping de twee middelste samen, verder alles los
+    const spans = [];
+    for(let ci=0; ci<cols.length; ci++){
+      if(isTv && ci === spec.tvStart){ spans.push([ci, ci+1]); ci++; }
+      else spans.push([ci, ci]);
+    }
+    spans.forEach(([a,b], k) => {
+      const cell = getCell(r.id, cols[a].id);
+      cell.widthSpan = b - a + 1; cell.widthSpanDir = 'rechts';
+      cell.widthCm = (k < spans.length-1) ? widthOfColSpan(a, b) : null; // het laatste vak vangt de afronding op
+      if(b > a){ const c2 = getCell(r.id, cols[b].id); c2.widthSpan = 1; c2.widthCm = null; }
+    });
+  });
+  spec.row.tvSig = spec.W.toFixed(2) + '|' + spec.tvW.toFixed(2) + '|' + rows.map(r=>r.id).join(',') + '|' + cols.map(c=>c.id+':'+c.width.toFixed(2)).join(',');
 }
-function setPartHeight(rowId, span, v){
-  // kastdeel over de hele breedte = gewoon de hoogte van de hele verdieping (zelfde als het veld "cm hoog")
+function setTvRow(rowId, on){
+  const W = widthBudget();
+  rows.forEach(r => { if(r.tv && r.id !== rowId){ r.tv = null; r.tvSig = null; } });
   const row = rows.find(r=>r.id===rowId);
-  if(row && span.startIdx === 0 && span.endIdx === cols.length-1 && v > 0){
-    cols.forEach(c => clearRowOverride(c.id, rowId));
-    row.height = Math.max(5, v); row.fixed = true;
-    rowFixOrder = rowFixOrder.filter(id=>id!==rowId); rowFixOrder.push(rowId);
-    recomputeRowFlex();
-    render();
-    return;
+  if(!row) return;
+  if(on){
+    row.tv = { widthCm: row.tv ? row.tv.widthCm : Math.round(Math.min(120, W*0.6)) };
+    row.tvSig = null;
+    applyTvLayout();
+    const spec = tvLayoutSpec();
+    if(spec){ const tvCell = getCell(row.id, cols[spec.tvStart].id); tvCell.type = 'open'; tvCell.door = false; tvCell.doorSpan = 1; }
+  } else {
+    row.tv = null; row.tvSig = null;
+    // terug naar een gewone, gelijk verdeelde kast
+    rows.forEach(r => cols.forEach(c => { const cell = getCell(r.id, c.id); cell.widthSpan = 1; cell.widthCm = null; }));
+    cols.forEach(c => { c.isFiller = true; });
+    recomputeFillers();
   }
-  for(let ci=span.startIdx; ci<=span.endIdx; ci++){
-    if(v > 0) setRowOverride(cols[ci].id, rowId, Math.max(5, v)); else clearRowOverride(cols[ci].id, rowId);
-  }
+  selectedCell = null;
   render();
 }
-function resetPartSizes(rowId){
+function setTvWidth(rowId, v){
   const row = rows.find(r=>r.id===rowId);
-  computeColSpans(rowId).forEach(sp => { getCell(rowId, cols[sp.startIdx].id).widthCm = null; });
-  cols.forEach(c => clearRowOverride(c.id, rowId));
-  if(row && row.parts) row.partsSig = null; // gelijke breedtes opnieuw laten verdelen
+  if(!row || !row.tv || !(v > 0)) return;
+  row.tv.widthCm = v; row.tvSig = null;
   render();
-}
-function partSizesHtml(row, realIdx){
-  const spans = computeColSpans(row.id);
-  const r1 = v => Math.round(v*10)/10;
-  const items = spans.map((sp, i) => {
-    const h = getEffectiveRowHeights(cols[sp.startIdx])[realIdx];
-    return `<div class="part-size"><span>Deel ${i+1}</span>
-      <label>breed <input type="number" min="10" step="0.5" value="${r1(partWidthCm(row, sp))}" data-partwidth="${row.id}" data-start="${sp.startIdx}" ${spans.length<2?'disabled title="Eén kastdeel neemt altijd de hele breedte"':''}> cm</label>
-      <label>hoog <input type="number" min="5" step="0.5" value="${r1(h)}" data-partheight="${row.id}" data-start="${sp.startIdx}" data-end="${sp.endIdx}"> cm</label></div>`;
-  }).join('');
-  return `<details class="row-sizes" data-sizesrow="${row.id}" ${openPartSizeRows.has(row.id)?'open':''}>
-    <summary>Breedte en hoogte per kastdeel</summary>
-    <div class="row-sizes-body">
-      <p class="row-sizes-hint">Pas je één kastdeel aan, dan passen de andere zich aan. De totale breedte en hoogte van de kast blijven gelijk.</p>
-      ${items}
-      <button type="button" class="mini-remove" data-partreset="${row.id}">Alles weer gelijk verdelen</button>
-    </div>
-  </details>`;
 }
 function handleAddRow(){
   rows.push({ id: uid('r'), height: 20, fixed:false });
@@ -2263,12 +2270,15 @@ function renderRowList(){
       <span class="lbl">verdieping ${realIdx+1}${r.fixed?' 🔒':''}</span>
       <input type="number" min="20" max="250" step="0.1" value="${Math.round(r.height*10)/10}" data-rowheight="${r.id}"> cm hoog
       ${rows.length>1 ? `<button class="mini-remove" data-rowremove="${r.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">minimaal 1 verdieping</span>`}
-      <div class="row-parts">Kastdelen naast elkaar:
+      ${tvSupported() ? `<div class="row-tv">
+        <button type="button" class="type-btn sm ${r.tv?'active':''}" data-tvrow="${r.id}">${r.tv ? '✓ TV-vak in het midden' : '+ TV-vak in het midden'}</button>
+        ${r.tv ? `<label style="display:flex;align-items:center;gap:6px;">breedte tv-vak <input type="number" min="40" step="1" value="${Math.round(tvLayoutSpec() ? tvLayoutSpec().tvW : r.tv.widthCm)}" data-tvwidth="${r.id}"> cm</label>` : ''}
+      </div>` : ''}
+      <div class="row-parts" ${tvRow() ? 'style="display:none;"' : ''}>Kastdelen naast elkaar:
         <button type="button" class="stepper-btn" data-rowparts="${r.id}" data-delta="-1" aria-label="Minder kastdelen op verdieping ${realIdx+1}">−</button>
         <strong>${rowPartsCount(r)}</strong>
         <button type="button" class="stepper-btn" data-rowparts="${r.id}" data-delta="1" aria-label="Meer kastdelen op verdieping ${realIdx+1}">+</button>
       </div>
-      ${partSizesHtml(r, realIdx)}
     `;
     list.appendChild(item);
   });
@@ -2290,6 +2300,16 @@ function renderRowList(){
   list.querySelectorAll('[data-rowremove]').forEach(btn=>{
     btn.addEventListener('click', e=>removeRow(e.target.dataset.rowremove));
   });
+  list.querySelectorAll('[data-tvrow]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = e.currentTarget.dataset.tvrow;
+      const r = rows.find(x=>x.id===id);
+      setTvRow(id, !(r && r.tv));
+    });
+  });
+  list.querySelectorAll('[data-tvwidth]').forEach(inp=>{
+    inp.addEventListener('change', e=>setTvWidth(e.target.dataset.tvwidth, parseNum(e.target.value)));
+  });
   list.querySelectorAll('[data-rowparts]').forEach(btn=>{
     btn.addEventListener('click', e=>{
       const id = e.currentTarget.dataset.rowparts;
@@ -2297,26 +2317,16 @@ function renderRowList(){
       if(r) setRowParts(id, rowPartsCount(r) + Number(e.currentTarget.dataset.delta));
     });
   });
-  list.querySelectorAll('[data-sizesrow]').forEach(d=>{
-    d.addEventListener('toggle', ()=>{ if(d.open) openPartSizeRows.add(d.dataset.sizesrow); else openPartSizeRows.delete(d.dataset.sizesrow); });
-  });
-  list.querySelectorAll('[data-partwidth]').forEach(inp=>{
-    inp.addEventListener('change', e=>setPartWidth(e.target.dataset.partwidth, Number(e.target.dataset.start), parseNum(e.target.value)));
-  });
-  list.querySelectorAll('[data-partheight]').forEach(inp=>{
-    inp.addEventListener('change', e=>{
-      const t = e.target;
-      setPartHeight(t.dataset.partheight, { startIdx:Number(t.dataset.start), endIdx:Number(t.dataset.end) }, parseNum(t.value));
-    });
-  });
-  list.querySelectorAll('[data-partreset]').forEach(btn=>{
-    btn.addEventListener('click', e=>resetPartSizes(e.currentTarget.dataset.partreset));
-  });
 }
 
 function renderColList(){
   const list = document.getElementById('colList');
   list.innerHTML = '';
+  const tvActive = !!tvRow();
+  const note = document.getElementById('tvColNote'), btnsEl = document.getElementById('colButtons');
+  if(note) note.style.display = tvActive ? 'block' : 'none';
+  if(btnsEl) btnsEl.style.display = tvActive ? 'none' : 'flex';
+  if(tvActive) return;
   cols.forEach((c, idx) => {
     const item = document.createElement('div');
     item.className = 'col-item';
@@ -5542,6 +5552,7 @@ function renderLedList(){
 }
 
 function render(){
+  applyTvLayout();
   applyRowParts();
   renderWallTabs();
   renderRowList();
