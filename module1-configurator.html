@@ -69,11 +69,11 @@
       "operatingSystem": "Elke moderne browser",
       "browserRequirements": "Vereist JavaScript en WebGL",
       "inLanguage": "nl-NL",
-      "description": "Online 3D-configurator waarmee je in 8 stappen een kastenwand, hoekopstelling of keuken op maat samenstelt: type, afmetingen, indeling, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en een offerteaanvraag.",
+      "description": "Online 3D-configurator waarmee je in 8 stappen een kastenwand, hoekopstelling of keuken op maat samenstelt: type, afmetingen, indeling, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en je gegevens. Een 9e stap om je ruimte in te tekenen is optioneel.",
       "featureList": [
         "Live 3D-voorbeeld dat je kunt draaien en zoomen",
         "Eigen maten voor breedte, hoogte en diepte",
-        "Rijen en kolommen vrij indelen, per kast bij een hoekopstelling",
+        "Verdiepingen en kastdelen vrij indelen, per kast bij een hoekopstelling",
         "Planken, laden, kledingroede en combinaties per vak",
         "Deuren met handgreep of push-to-open",
         "Aparte kleur voor binnenkant en buitenkant",
@@ -96,7 +96,7 @@
         {
           "@type": "Question",
           "name": "Hoe werkt de online configurator van Module1?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Je stelt je kast samen in 8 stappen: type kast, afmetingen, indeling in rijen en kolommen, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en je gegevens. Je ziet je kast tijdens alle stappen in een live 3D-voorbeeld dat je kunt draaien en zoomen, samen met een indicatieve prijs." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Je stelt je kast samen in 8 stappen: type kast, afmetingen, indeling in verdiepingen en kastdelen, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en je gegevens. In een optionele 9e stap kun je ook je ruimte intekenen. Je ziet je kast tijdens alle stappen in een live 3D-voorbeeld dat je kunt draaien en zoomen, samen met een indicatieve prijs." }
         },
         {
           "@type": "Question",
@@ -111,7 +111,7 @@
         {
           "@type": "Question",
           "name": "Wat kan ik in een kast kiezen?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere rijen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen." }
         },
         {
           "@type": "Question",
@@ -329,7 +329,7 @@
     display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-family:Arial,Helvetica,sans-serif;font-size:12px;max-width:100%;
   }#configuratorEmbed .col-item .mini-remove, #configuratorEmbed .row-item .mini-remove {white-space:nowrap;}#configuratorEmbed .cell-rect {transition:filter .12s ease;}#configuratorEmbed .cell-rect:hover {filter:brightness(1.15);}#configuratorEmbed .cell-rect-overlay {pointer-events:none;animation:cellGlow 1.1s ease-in-out infinite alternate;}@keyframes cellGlow {from{opacity:0.16;} to{opacity:0.34;}}#configuratorEmbed .row-item input, #configuratorEmbed .col-item input {
     width:70px;padding:7px 10px;border:1.5px solid var(--line);border-radius:var(--radius-pill);font-family:Arial,Helvetica,sans-serif;font-size:13px;text-align:center;
-  }#configuratorEmbed .row-item .lbl, #configuratorEmbed .col-item .lbl {width:70px;color:var(--graphite);}#configuratorEmbed .mini-remove {background:none;border:none;color:#a34a2e;text-decoration:underline;cursor:pointer;font-family:Arial,Helvetica,sans-serif;font-size:11px;}#configuratorEmbed .add-btn {
+  }#configuratorEmbed .row-item .lbl, #configuratorEmbed .col-item .lbl {width:70px;color:var(--graphite);}#configuratorEmbed #rowList .lbl, #configuratorEmbed #colList .lbl {width:82px;}#configuratorEmbed .mini-remove {background:none;border:none;color:#a34a2e;text-decoration:underline;cursor:pointer;font-family:Arial,Helvetica,sans-serif;font-size:11px;}#configuratorEmbed .add-btn {
     font-family:Arial,Helvetica,sans-serif;font-size:12px;padding:9px 18px;border-radius:var(--radius-pill);
     border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;
   }#configuratorEmbed .add-btn.secondary {background:transparent;color:var(--ink);}#configuratorEmbed .stage {
@@ -725,9 +725,11 @@
 <div class="wrap">
   <div class="eyebrow">Module1 — configurator</div>
   <h2 class="wrap-title">Stel je eigen opbouw samen</h2>
-  <p class="sub">Bouw eerst je raster op in 2D: voeg rijen toe om te stapelen, kolommen om naast elkaar te plaatsen. Klik daarna op een vak om de invulling te kiezen. Bekijk het resultaat in 3D wanneer je wilt.</p>
+  <p class="sub">Volg de stappen hieronder. Je ziet je kast meteen in 3D en de prijs rekent live mee. Je ontwerp wordt op dit apparaat bewaard, dus je kunt later verder gaan.</p>
+  <div id="restoreNote" style="display:none;font-family:Arial,Helvetica,sans-serif;font-size:13px;background:var(--sand);border-radius:var(--radius-field);padding:10px 14px;margin:-12px 0 22px;"></div>
 
-  <div class="panel" id="voicePanel">
+  <!-- Verborgen zolang interpret-configurator.php niet op de site staat: zonder dat script geeft "Verwerk mijn wens" altijd een foutmelding. -->
+  <div class="panel" id="voicePanel" style="display:none;">
     <h2 class="section-title">Vertel wat je wilt</h2>
     <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:12px;">Spreek (of typ) in gewone taal wat voor kast je zoekt, bijv. "een witte hoekkeuken van 3 bij 60 met werkblad" — de configurator vult daarna zelf het type, de plattegrond, de maten en het materiaal in.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
@@ -833,7 +835,7 @@
               </div>
               <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:8px;">De plint krijgt automatisch dezelfde kleur als de kast (stap 5, Materiaal).</p>
             </div>
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:4px;">De breedte wordt automatisch verdeeld in vakken van max. 60 cm. Hoogte wordt proportioneel herverdeeld over de bestaande rijen. Diepte geldt voor het hele ontwerp. Je kunt losse rijen/kolommen hierna nog met de hand bijstellen.</p>
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:4px;">De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 cm, de hoogte over de verdiepingen. De diepte geldt voor de hele kast. In stap 3 kun je verdiepingen en kastdelen nog los aanpassen.</p>
           </div>
 
           <div class="panel" id="worktopPanel" style="display:none;">
@@ -875,23 +877,25 @@
 
           <div class="type-row" id="wallTabsRow3" style="display:none;margin-bottom:16px;"></div>
 
+          <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.</p>
+
           <div class="panel">
-            <h2 class="section-title">Rijen (stapelen — onderaan = rij 1)</h2>
+            <h2 class="section-title">Verdiepingen (op elkaar, van onder naar boven)</h2>
             <div class="row-list" id="rowList"></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button class="add-btn" id="addRow">+ Rij toevoegen</button>
-              <button class="add-btn secondary" id="equalizeRowsBtn" type="button">Alle rijen gelijke hoogte</button>
+              <button class="add-btn" id="addRow">+ Verdieping erbij</button>
+              <button class="add-btn secondary" id="equalizeRowsBtn" type="button">Alle verdiepingen even hoog</button>
             </div>
           </div>
 
           <div class="panel">
-            <h2 class="section-title">Kolommen (naast elkaar)</h2>
+            <h2 class="section-title">Kastdelen (naast elkaar, van links naar rechts)</h2>
             <div class="col-list" id="colList"></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button class="add-btn" id="addCol">+ Kolom toevoegen</button>
-              <button class="add-btn secondary" id="equalizeColsBtn" type="button">Alle kolommen gelijke breedte</button>
+              <button class="add-btn" id="addCol">+ Kastdeel erbij</button>
+              <button class="add-btn secondary" id="equalizeColsBtn" type="button">Alle kastdelen even breed</button>
             </div>
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:12px;">Pas je de breedte van één kolom aan, dan blijft die kolom (met zijn inhoud) precies zo. De overige ruimte wordt automatisch met vakken van max. 60 cm aangevuld, zodat de totale breedte klopt.</p>
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:12px;">Pas je de breedte van één kastdeel aan, dan blijft dat kastdeel (met zijn inhoud) precies zo. De rest van de breedte wordt automatisch verdeeld over kastdelen van maximaal 60 cm, zodat de totale breedte blijft kloppen.</p>
           </div>
 
           <div class="wizard-nav">
@@ -905,7 +909,7 @@
 
           <div class="panel" id="contentPanel">
             <h2 class="section-title">Binnenopdeling</h2>
-            <p id="contentPanelHint" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:14px;">Klik een vak aan in het voorbeeld hiernaast (ook in de 3D-weergave) om de inhoud ervan te kiezen — je ziet de wijziging meteen in het voorbeeld.</p>
+            <p id="contentPanelHint" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:14px;">Klik een vak aan in het voorbeeld van je kast (ook in de 3D-weergave) om de inhoud ervan te kiezen — je ziet de wijziging meteen in het voorbeeld.</p>
             <div class="type-row" id="contentTypeRow" style="display:none;"></div>
             <div id="cellSettingsInline"></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -943,7 +947,7 @@
           <div class="wizard-step-head"><div class="eyebrow">Stap 6 van 9</div><h2>LED-verlichting</h2></div>
           <div class="panel">
             <h2 class="section-title">LED-verlichting per vak</h2>
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:14px;">Kies per vak of er LED-verlichting in moet, en aan welke kant de strip komt te zitten. Zet de weergave in het voorbeeld hiernaast op "Bekijk in 3D" om de lichtstrip direct te zien — deuren worden daar automatisch doorzichtig zodat je erdoorheen kunt kijken.</p>
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:14px;">Kies per vak of er LED-verlichting in moet, en aan welke kant de strip komt te zitten. Zet de weergave van het voorbeeld op "Bekijk in 3D" om de lichtstrip direct te zien — deuren worden daar automatisch doorzichtig zodat je erdoorheen kunt kijken.</p>
             <div id="ledList"></div>
           </div>
           <div class="wizard-nav">
@@ -1146,7 +1150,7 @@
         </details>
         <details class="faq-item">
           <summary>Hoe werkt de online configurator van Module1?</summary>
-          <p>Je stelt je kast samen in 8 stappen: type kast, afmetingen, indeling in rijen en kolommen, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en je gegevens. Je ziet je kast tijdens alle stappen in een live 3D-voorbeeld dat je kunt draaien en zoomen, samen met een indicatieve prijs.</p>
+          <p>Je stelt je kast samen in 8 stappen: type kast, afmetingen, indeling in verdiepingen en kastdelen, binnenopdeling, materiaal, LED-verlichting, inmeten en montage, en je gegevens. In een optionele 9e stap kun je ook je ruimte intekenen. Je ziet je kast tijdens alle stappen in een live 3D-voorbeeld dat je kunt draaien en zoomen, samen met een indicatieve prijs.</p>
         </details>
         <details class="faq-item">
           <summary>Welke soorten kasten kan ik samenstellen?</summary>
@@ -1158,7 +1162,7 @@
         </details>
         <details class="faq-item">
           <summary>Wat kan ik in een kast kiezen?</summary>
-          <p>Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere rijen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen.</p>
+          <p>Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen.</p>
         </details>
         <details class="faq-item">
           <summary>Kan Module1 mijn kast inmeten en monteren?</summary>
@@ -1196,14 +1200,13 @@
       </div>
       <div class="contact-wrap">
         <div class="contact-info">
-          <div class="ci-item"><div class="ci-label">Telefoon</div><div class="ci-value">06 12 34 56 78</div></div>
-          <div class="ci-item"><div class="ci-label">E-mail</div><div class="ci-value">info@module1.nl</div></div>
+                    <div class="ci-item"><div class="ci-label">E-mail</div><div class="ci-value">info@module1.nl</div></div>
           <div class="ci-item"><div class="ci-label">Werkplaats</div><div class="ci-value">Op afspraak te bezoeken</div></div>
         </div>
-        <form onsubmit="event.preventDefault(); alert('Formulier werkt in de definitieve versie — dit is een ontwerp-voorbeeld.');">
-          <input type="text" placeholder="Naam" required>
-          <input type="email" placeholder="E-mailadres" required>
-          <textarea placeholder="Vertel kort over je ruimte en wensen" required></textarea>
+        <form id="contactForm">
+          <input type="text" id="contactNaam" placeholder="Naam" required>
+          <input type="email" id="contactEmail" placeholder="E-mailadres" required>
+          <textarea id="contactBericht" placeholder="Vertel kort over je ruimte en wensen" required></textarea>
           <button type="submit" class="btn" style="align-self:flex-start;">Versturen</button>
         </form>
       </div>
@@ -1238,6 +1241,16 @@
 </div>
 
 <script>
+  // contactformulier: zet een e-mail aan info@module1.nl klaar in het mailprogramma van de bezoeker
+  document.getElementById('contactForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const naam = document.getElementById('contactNaam').value.trim();
+    const email = document.getElementById('contactEmail').value.trim();
+    const bericht = document.getElementById('contactBericht').value.trim();
+    const subject = encodeURIComponent('Vraag via de website - ' + naam);
+    const body = encodeURIComponent(bericht + '\n\n' + naam + '\n' + email);
+    window.location.href = 'mailto:info@module1.nl?subject=' + subject + '&body=' + body;
+  });
   const toggle = document.getElementById('menuToggle');
   const links = document.getElementById('navLinks');
   toggle.addEventListener('click', () => links.classList.toggle('open'));
@@ -1739,7 +1752,7 @@ function setProjectType(type){
   } else if(type==='hoekopstelling'){
     worktopPanel.style.display = 'none';
     worktop.enabled = false;
-    note.textContent = 'Hoekopstelling: kies eerst de hoekrichting hieronder. De volledige hoekfunctie (twee wanden haaks op elkaar) volgt binnenkort — je stelt nu al wel de eerste wand in.';
+    note.textContent = 'Hoekopstelling: twee kastenwanden haaks op elkaar. Kies hieronder aan welke kant de hoek zit.';
     layoutPanel.style.display = 'block';
     mainConfig.style.display = 'none';
     renderLayoutChoices('hoekopstelling');
@@ -2078,7 +2091,7 @@ function rowMiniIcon(realIdx){
     const isThis = i===realIdx;
     bars.push(`<rect x="1" y="${y+1}" width="${w-2}" height="${barH-2}" rx="3" fill="${isThis?'#b08655':'#eeece5'}" stroke="#151513" stroke-width="1.5"/>`);
     if(isThis){
-      bars.push(`<text x="${w/2}" y="${y+barH/2}" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" fill="#fff">Rij ${realIdx+1}</text>`);
+      bars.push(`<text x="${w/2}" y="${y+barH/2}" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" fill="#fff">${realIdx+1}</text>`);
     }
   }
   const totalH = total*barH + (total-1)*gap;
@@ -2106,9 +2119,9 @@ function renderRowList(){
     item.className = 'row-item';
     item.innerHTML = `
       ${rowMiniIcon(realIdx)}
-      <span class="lbl">rij ${realIdx+1}${realIdx===0?' (onder)':''}${r.fixed?' 🔒':''}</span>
+      <span class="lbl">verdieping ${realIdx+1}${r.fixed?' 🔒':''}</span>
       <input type="number" min="20" max="250" step="0.1" value="${Math.round(r.height*10)/10}" data-rowheight="${r.id}"> cm hoog
-      ${rows.length>1 ? `<button class="mini-remove" data-rowremove="${r.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">laatste rij</span>`}
+      ${rows.length>1 ? `<button class="mini-remove" data-rowremove="${r.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">minimaal 1 verdieping</span>`}
     `;
     list.appendChild(item);
   });
@@ -2140,10 +2153,10 @@ function renderColList(){
     item.className = 'col-item';
     item.innerHTML = `
       ${colMiniIcon(idx)}
-      <span class="lbl">kolom ${idx+1}</span>
+      <span class="lbl">kastdeel ${idx+1}</span>
       <input type="number" min="20" max="200" step="0.1" value="${Math.round(c.width*10)/10}" data-colwidth="${c.id}"> cm breed
       <button class="mini-remove" data-colapply="${c.id}" style="color:var(--ink);">toepassen</button>
-      ${cols.length>1 ? `<button class="mini-remove" data-colremove="${c.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">laatste kolom</span>`}
+      ${cols.length>1 ? `<button class="mini-remove" data-colremove="${c.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">minimaal 1 kastdeel</span>`}
     `;
     list.appendChild(item);
   });
@@ -2877,7 +2890,7 @@ function renderCellEditorInner(backdrop, box){
   const line = (label, inner) => `<div class="cs-row"><span class="cs-label">${label}</span>${inner}</div>`;
   const nums = (n) => Array.from({length:n}, (_,i)=>[i+1, i+1]);
 
-  let html = `<div class="cs-title">Instellingen — rij ${rIdx+1}, kolom ${cIdx+1}</div>`;
+  let html = `<div class="cs-title">Instellingen — verdieping ${rIdx+1}, kastdeel ${cIdx+1}</div>`;
   if(cell.type==='planken') html += line('Planken', btns('shelves', nums(6), Number(cell.options.shelves)||3));
   if(cell.type==='laden') html += line('Laden', btns('drawers', nums(6), Number(cell.options.drawers)||3));
   html += line('Deur', btns('door', [['no','Geen deur'],['yes','Deur']], hasDoor ? 'yes' : 'no'));
@@ -2885,7 +2898,7 @@ function renderCellEditorInner(backdrop, box){
     html += line('Aantal deuren', btns('doors', [[1,'1'],[2,'2']], nDoors));
     if(nDoors === 1) html += line('Scharnier', btns('hinge', [['links','Links'],['rechts','Rechts']], dCell.hinge||'links'));
     // altijd tonen (ook bij de bovenste modules): de deur loopt dan over dit vak en de rij(en) eronder
-    if(rows.length > 1) html += line('Deur over', btns('doorspan', nums(rows.length), doorSpan) + `<span class="cs-hint">rijen hoog</span>`);
+    if(rows.length > 1) html += line('Deur over', btns('doorspan', nums(rows.length), doorSpan) + `<span class="cs-hint">verdiepingen hoog</span>`);
   }
   if(cell.type==='kledinglift') html += line('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
   if(showHandleOption) html += line('Openen', btns('handle', [['greep','Handgreep'],['push','Push to open']], hasHandle(hasDoor ? dCell : cell)?'greep':'push'));
@@ -2900,7 +2913,7 @@ function renderCellEditorInner(backdrop, box){
         <div class="extra-row" id="rowDepthExtra"></div>
         ${line('Diepte uitlijnen', btns('depthalign', [['voor','Voorkant gelijk'],['achter','Achterkant gelijk']], cell.depthAlign === 'achter' ? 'achter' : 'voor'))}
         ${freeWidthPossible ? '<div class="extra-row" id="freeWidthExtra"></div>' : ''}
-        ${line('Breedte', `<span class="cs-hint" style="margin:0;">${Math.round(spanWidthCm*10)/10} cm${colSpan>1?` (${colSpan} kolommen samengevoegd)`:''}</span>`)}
+        ${line('Breedte', `<span class="cs-hint" style="margin:0;">${Math.round(spanWidthCm*10)/10} cm${colSpan>1?` (${colSpan} kastdelen samengevoegd)`:''}</span>`)}
         <div class="cs-row" id="csMergeRow">
           ${canMergeLeft ? '<button type="button" class="type-btn sm" data-act="mergeLeft">+ vak links erbij</button>' : ''}
           ${canMergeRight ? '<button type="button" class="type-btn sm" data-act="mergeRight">+ vak rechts erbij</button>' : ''}
@@ -3049,7 +3062,7 @@ function renderSummary(){
     coveredByDoor[col.id] = {};
     spans.forEach(span => {
       for(let i=span.startIdx; i<=span.endIdx; i++){
-        coveredByDoor[col.id][i] = (i===span.startIdx) ? `deur (${span.endIdx-span.startIdx+1} rij${span.endIdx>span.startIdx?'en':''})` : null;
+        coveredByDoor[col.id][i] = (i===span.startIdx) ? `deur (${span.endIdx-span.startIdx+1} verdieping${span.endIdx>span.startIdx?'en':''})` : null;
       }
     });
   });
@@ -3067,10 +3080,10 @@ function renderSummary(){
       const r = document.createElement('div');
       r.className = 'summary-row';
       if(doorInfo === null){
-        r.innerHTML = `<span>rij ${ri+1}, kolom ${ci+1} — ${typeLabel} (achter deur hierboven), ${mat.name}</span><span>${wDisp}×${hDisp}×${dDisp} cm</span>`;
+        r.innerHTML = `<span>verdieping ${ri+1}, kastdeel ${ci+1} — ${typeLabel} (achter deur hierboven), ${mat.name}</span><span>${wDisp}×${hDisp}×${dDisp} cm</span>`;
       } else {
         const doorLabel = doorInfo ? `, ${doorInfo}` : '';
-        r.innerHTML = `<span>rij ${ri+1}, kolom ${ci+1} — ${typeLabel}${doorLabel}, ${mat.name}</span><span>${wDisp}×${hDisp}×${dDisp} cm</span>`;
+        r.innerHTML = `<span>verdieping ${ri+1}, kastdeel ${ci+1} — ${typeLabel}${doorLabel}, ${mat.name}</span><span>${wDisp}×${hDisp}×${dDisp} cm</span>`;
       }
       summary.appendChild(r);
     }
@@ -5031,7 +5044,9 @@ function calculatePrice(){
   }
   const edgebandM = edgebandCm / 100;
 
-  const priceText = '€ ' + total.toLocaleString('nl-NL', {maximumFractionDigits:0});
+  let priceText = '€ ' + total.toLocaleString('nl-NL', {maximumFractionDigits:0});
+  // nog geen prijzen binnen (of de prijslijst is niet bereikbaar): geen "€ 0" tonen, dat lijkt een echte prijs
+  if(!(total > 0)) priceText = remoteTariffsFailed ? 'Prijs op aanvraag' : (remoteTariffsActive ? priceText : 'Prijs wordt geladen…');
   const el = document.getElementById('totalPrice');
   if(el) el.textContent = priceText;
   // Dezelfde prijs staat ook constant onder het live voorbeeld (op elke stap, niet alleen bij het
@@ -5133,13 +5148,14 @@ function mainConfigReady(){
   const el = document.getElementById('mainConfigurator');
   return !!el && el.style.display !== 'none';
 }
+var suppressWizardScroll = false; // true tijdens het terugzetten van een bewaard ontwerp (zie restoreDesign)
 function goToWizardStep(n){
   if(n >= 2 && !mainConfigReady()) n = 1; // nog geen plattegrond gekozen: kan niet verder dan stap 1
   wizardStep = n;
   userZoomed = false; if(typeof fitCameraDistance === 'function') fitCameraDistance();
   updateWizardUI();
   const wiz = document.getElementById('configWizard');
-  if(wiz) wiz.scrollIntoView({behavior:'smooth', block:'start'});
+  if(wiz && !suppressWizardScroll) wiz.scrollIntoView({behavior:'smooth', block:'start'});
 }
 const WIZARD_STEP_COUNT = 9;
 const WIZARD_STEP_NAMES = ['Type kast','Afmetingen','Indeling','Binnenopdeling','Materiaal','Verlichting','Montage','Gegevens','Ruimte'];
@@ -5309,7 +5325,7 @@ function renderLedList(){
       const cell = getCell(row.id, startCol.id);
       const key = row.id+':'+startCol.id;
       html += `<div class="row-item" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:8px;">
-        <span class="lbl" style="width:auto;">Rij ${ri+1}, kolom ${span.startIdx+1}</span>
+        <span class="lbl" style="width:auto;">Verdieping ${ri+1}, kastdeel ${span.startIdx+1}</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="type-btn" type="button" data-ledtoggle="${key}" data-ledvalue="off" ${!cell.led.enabled?'style="background:var(--ink);color:var(--paper);border-color:var(--ink);"':''}>Geen LED</button>
           <button class="type-btn" type="button" data-ledtoggle="${key}" data-ledvalue="on" ${cell.led.enabled?'style="background:var(--ink);color:var(--paper);border-color:var(--ink);"':''}>LED</button>
@@ -5888,7 +5904,7 @@ function renderWorktopExtra(){
       <div class="row-item"><span class="lbl" style="width:100px;">Links</span><input type="number" min="0" max="10" step="0.5" id="worktopOverhangLeft" value="${worktop.overhangLeftCm||0}"> cm</div>
       <div class="row-item"><span class="lbl" style="width:100px;">Rechts</span><input type="number" min="0" max="10" step="0.5" id="worktopOverhangRight" value="${worktop.overhangRightCm||0}"> cm</div>
     </div>
-    <div class="row-item" style="margin-top:10px;"><span class="lbl">Na rij</span><input type="number" min="1" max="${rows.length}" step="1" id="worktopAfterRow" value="${worktop.afterRowIndex+1}"> (welke rij zit eronder)</div>
+    <div class="row-item" style="margin-top:10px;"><span class="lbl" style="width:auto;">Op verdieping</span><input type="number" min="1" max="${rows.length}" step="1" id="worktopAfterRow" value="${worktop.afterRowIndex+1}"> (welke verdieping zit eronder)</div>
     <span class="lbl" style="display:block;margin-top:14px;margin-bottom:6px;">Materiaal werkblad (ook te kiezen in stap 5)</span>
     <div class="swatch-row" id="worktopSwatchRow"></div>
   `;
@@ -5911,7 +5927,9 @@ function renderWorktopExtra(){
 // voor een kastenwand meteen door naar stap 2 (geen aparte plattegrond-keuze nodig) — hier zetten
 // we 'm daarna weer terug naar stap 1, zodat je bij het openen van de pagina gewoon bij het begin
 // van het stappenplan start, met "Kastenwand tussen 2 wanden" al als actieve keuze.
+suppressWizardScroll = true; // bij het openen van de pagina niet meteen naar de configurator springen
 setProjectType('wandkast');
+suppressWizardScroll = false;
 wizardStep = 1;
 updateWizardUI();
 switchView('3d');
@@ -5942,14 +5960,20 @@ document.querySelectorAll('#installationRow [data-installation]').forEach(btn=>{
 [['custNaam','naam'],['custEmail','email'],['custTelefoon','telefoon'],['custAdres','adres'],['custPostcode','postcode'],['custPlaats','plaats']].forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{ customerInfo[key] = e.target.value; });
 });
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  rows=[{id:uid('r'),height:100}]; cols=[{id:uid('c'),width:60,depth:58,isFiller:true}]; lockedTotalWidth=60; globalDepth=58; cells={}; selectedCell=null; zoomDist=null;
-  wantsMeasurement=null; wantsInstallation=null; customerInfo={naam:'',email:'',telefoon:'',adres:'',postcode:'',plaats:''};
-  document.querySelectorAll('#measurementRow [data-measurement], #installationRow [data-installation]').forEach(b=>b.classList.remove('active'));
-  ['custNaam','custEmail','custTelefoon','custAdres','custPostcode','custPlaats'].forEach(id=>{ document.getElementById(id).value=''; });
-  render();
-  goToWizardStep(1);
-});
+function armResetButton(btn){
+  const label = btn.textContent;
+  let armed = false, timer = null;
+  btn.addEventListener('click', ()=>{
+    if(!armed){
+      armed = true; btn.textContent = 'Zeker weten? Klik nogmaals';
+      timer = setTimeout(()=>{ armed = false; btn.textContent = label; }, 4000);
+      return;
+    }
+    clearTimeout(timer);
+    resetDesign();
+  });
+}
+armResetButton(document.getElementById('resetBtn'));
 // ---- Offerte: elke module apart (afmeting, indeling, materiaal, prijs) + alle losse onderdelen met maat, materiaal en prijs ----
 // Eerst worden de gegevens per wand verzameld (quoteWallData); daarna maken we er de mailtekst (quoteDataToText)
 // en het briefpapier-overzicht (buildQuoteSheetHtml) van, zodat beide altijd hetzelfde zeggen. De prijzen komen uit
@@ -5993,7 +6017,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
       if(ov && ov[ci]) cw = ov[ci].w;
       const rh = getEffectiveRowHeights(col)[ri], cd = getEffectiveDepth(col, row.id);
       const pm = items.modules.find(m => m.ri === ri && m.ci === ci) || { items: [], total: 0 };
-      const mod = { title: 'Module ' + n, pos: 'rij ' + (ri+1) + ', kolom ' + (ci+1),
+      const mod = { title: 'Module ' + n, pos: 'verdieping ' + (ri+1) + ', kastdeel ' + (ci+1),
         size: quoteNum(cw) + ' x ' + quoteNum(rh) + ' x ' + quoteNum(cd) + ' cm',
         indeling: quoteTypeText(cell), matInner: quoteMat(cell.material), matDoor: null,
         details: [], lines: [], price: pm.total };
@@ -6009,14 +6033,14 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
         const doorW = cw / dSp.doors;
         const nRows = dSp.endIdx - dSp.startIdx + 1;
         mod.matDoor = quoteMat(dSp.material);
-        const doorTxt = dSp.doors + ' deur' + (dSp.doors > 1 ? 'en' : '') + (dSp.doors === 1 ? ', scharnier ' + dSp.hinge : '') + (nRows > 1 ? ', over ' + nRows + ' rijen' : '') + ', maat per deur ' + quoteNum(Math.max(0, doorW-2)) + ' x ' + quoteNum(Math.max(0, spanH-3)) + ' cm';
+        const doorTxt = dSp.doors + ' deur' + (dSp.doors > 1 ? 'en' : '') + (dSp.doors === 1 ? ', scharnier ' + dSp.hinge : '') + (nRows > 1 ? ', over ' + nRows + ' verdiepingen' : '') + ', maat per deur ' + quoteNum(Math.max(0, doorW-2)) + ' x ' + quoteNum(Math.max(0, spanH-3)) + ' cm';
         const openTxt = dSp.handleType === 'push' ? 'push to open (geen handgreep)'
           : 'handgreep, ' + (dSp.handleOrient === 'horiz' ? 'liggend' : 'staand') + (dSp.handleY !== null && dSp.handleY !== undefined ? ', ' + quoteNum(dSp.handleY) + ' cm vanaf boven' : '');
         mod.details.push('Deur: ' + doorTxt);
         mod.details.push('Openen: ' + openTxt);
         mod.lines.push({ text: 'Deur: ' + doorTxt + ' - ' + mod.matDoor + ' - ' + openTxt + ' (incl. scharnieren)', amount: priceOf(pm.items, 'deur') });
       } else if(dSp){
-        mod.details.push('Deur: onderdeel van de deur in rij ' + (dSp.startIdx+1) + ' (deur over ' + (dSp.endIdx-dSp.startIdx+1) + ' rijen)');
+        mod.details.push('Deur: onderdeel van de deur op verdieping ' + (dSp.startIdx+1) + ' (deur over ' + (dSp.endIdx-dSp.startIdx+1) + ' verdiepingen)');
       } else if(cell.type === 'laden' || cell.type === 'roede-laden'){
         mod.details.push('Openen: ' + (hasHandle(cell) ? 'handgreep' : 'push to open (geen handgreep)'));
       }
@@ -6282,7 +6306,7 @@ function buildQuoteSheetHtml(){
   const logo = '<svg viewBox="0 0 120 110" fill="none" width="46" height="50"><rect x="24" y="16" width="72" height="78" fill="none" stroke="#151513" stroke-width="5"/><line x1="60" y1="16" x2="60" y2="94" stroke="#151513" stroke-width="5"/><line x1="24" y1="55" x2="96" y2="55" stroke="#151513" stroke-width="5"/><rect x="60" y="16" width="36" height="39" fill="#B08655"/></svg>';
   let h = '';
   h += '<div class="qs-head"><div class="qs-brand">' + logo + '<div class="qs-brandname">Module<span>1</span><small>Interieurbouw op maat</small></div></div>'
-    + '<div class="qs-contact">info@module1.nl<br>06 12 34 56 78<br>module1.nl</div></div>';
+    + '<div class="qs-contact">info@module1.nl<br>module1.nl</div></div>';
   h += '<div class="qs-rule"></div>';
   h += '<div class="qs-titlerow"><div><h1>Offerte</h1><div class="qs-sub">Indicatieve offerte op basis van je ontwerp in de configurator</div></div>'
     + '<div class="qs-meta"><div><span>Datum</span>' + dateText + '</div><div><span>Referentie</span>' + ref + '</div></div></div>';
@@ -6524,7 +6548,8 @@ function saveTariffs(){ try{ localStorage.setItem(TARIFF_STORE_KEY, JSON.stringi
 // dat document bij het openen, elke 5 minuten en zodra de pagina weer in beeld komt, en rekent er meteen mee.
 const REMOTE_TARIFF_URL = 'https://firestore.googleapis.com/v1/projects/adminstratie-programma/databases/(default)/documents/publiek/tarieven?key=AIzaSyC-tTAkasaN6s0D_tid9aTFMkT4bLy4FN8';
 const REMOTE_TARIFF_CACHE_KEY = 'module1_tarieven_remote_v1';
-let remoteTariffsActive = false;
+var remoteTariffsActive = false; // var i.p.v. let: calculatePrice() leest dit al bij de eerste render, nog vóór deze regel
+var remoteTariffsFailed = false;
 function fsString(v){ return (v && v.stringValue) || ''; }
 // de administratie-app mag zelf kleuren (materialen) toevoegen/verwijderen - de site bouwt de hele
 // materiaallijst dan opnieuw op uit wat er nu online staat, in plaats van vaste ingebakken kleuren.
@@ -6587,16 +6612,21 @@ function applyRemoteTariffs(obj){
   try{ calculatePrice(); }catch(e){}
   return true;
 }
+function markRemoteTariffsFailed(){
+  if(remoteTariffsActive) return; // er zijn al (eerder bewaarde) prijzen, daar blijven we mee rekenen
+  remoteTariffsFailed = true;
+  try{ calculatePrice(); }catch(e){}
+}
 async function fetchRemoteTariffs(){
   try{
     const res = await fetch(REMOTE_TARIFF_URL, { cache:'no-store' });
-    if(!res.ok) return false;
+    if(!res.ok){ markRemoteTariffsFailed(); return false; }
     const parsed = parseRemoteTariffDoc(await res.json());
-    if(!parsed) return false;
+    if(!parsed){ markRemoteTariffsFailed(); return false; }
     applyRemoteTariffs(parsed);
     try{ localStorage.setItem(REMOTE_TARIFF_CACHE_KEY, JSON.stringify(parsed)); }catch(e){}
     return true;
-  }catch(e){ return false; }
+  }catch(e){ markRemoteTariffsFailed(); return false; }
 }
 try{ const rc = localStorage.getItem(REMOTE_TARIFF_CACHE_KEY); if(rc){ applyTariffs(JSON.parse(rc)); remoteTariffsActive = true; } }catch(e){}
 function setBeheer(on){
@@ -6644,6 +6674,96 @@ document.getElementById('tariffLoadBtn').addEventListener('click', () => {
     calculatePrice();
   }catch(e){ alert('De tarieven konden niet gelezen worden - controleer of het geldige JSON is.'); }
 });
+
+// ---- Ontwerp automatisch bewaren op dit apparaat ----
+// Zodra de bezoeker iets in de configurator doet, wordt het hele ontwerp (alle wanden, maten, indeling, keuzes en
+// gegevens) elke paar seconden in de browser bewaard. Bij een volgend bezoek (of na per ongeluk herladen) komt het
+// terug. "Opnieuw beginnen" wist het weer.
+const DESIGN_STORE_KEY = 'module1_ontwerp_v1';
+let designTouched = false, designResetting = false, lastSavedDesign = '';
+function designSnapshot(){
+  return {
+    v: 1, projectType, selectedLayout, kookeilandTwoSided, masterWallIndex, worktopMasterWallIndex, lastCornerKey,
+    walls: walls.map((w, i) => i === activeWallIndex ? captureWallState() : w),
+    current: captureWallState(), activeWallIndex, wizardStep,
+    wantsMeasurement, wantsInstallation, customerInfo,
+    room, roomEnabled, roomCabinetOffsetX, roomCabinetOffsetZ, roomCabinetRotationDeg,
+  };
+}
+function saveDesign(){
+  if(!designTouched || designResetting) return;
+  try{
+    const str = JSON.stringify(designSnapshot());
+    if(str !== lastSavedDesign){ localStorage.setItem(DESIGN_STORE_KEY, str); lastSavedDesign = str; }
+  }catch(e){}
+}
+function resetDesign(){
+  designResetting = true;
+  try{ localStorage.removeItem(DESIGN_STORE_KEY); }catch(e){}
+  location.hash = 'configurator';
+  location.reload();
+}
+function restoreDesign(){
+  let d = null;
+  try{ d = JSON.parse(localStorage.getItem(DESIGN_STORE_KEY) || 'null'); }catch(e){ return false; }
+  if(!d || d.v !== 1 || !d.current || !['wandkast','hoekopstelling','keuken'].includes(d.projectType)) return false;
+  suppressWizardScroll = true;
+  try{
+    if(d.projectType !== projectType) setProjectType(d.projectType);
+    if(d.selectedLayout && (LAYOUT_OPTIONS[projectType] || []).some(o => o.id === d.selectedLayout)){
+      selectedLayout = d.selectedLayout;
+      renderLayoutChoices(projectType);
+      document.getElementById('mainConfigurator').style.display = 'block';
+    }
+    kookeilandTwoSided = !!d.kookeilandTwoSided;
+    masterWallIndex = d.masterWallIndex === 1 ? 1 : 0;
+    worktopMasterWallIndex = (d.worktopMasterWallIndex === 0 || d.worktopMasterWallIndex === 1) ? d.worktopMasterWallIndex : null;
+    walls = Array.isArray(d.walls) ? d.walls : [];
+    activeWallIndex = Math.max(0, Math.min(Number(d.activeWallIndex) || 0, walls.length - 1));
+    lastCornerKey = d.lastCornerKey || null;
+    applyWallState(walls.length ? walls[activeWallIndex] : d.current);
+    selectedCell = null;
+    const yn = v => (v === true || v === false) ? v : null;
+    wantsMeasurement = yn(d.wantsMeasurement); wantsInstallation = yn(d.wantsInstallation);
+    document.querySelectorAll('#measurementRow [data-measurement]').forEach(b => b.classList.toggle('active', wantsMeasurement !== null && (b.dataset.measurement === 'yes') === wantsMeasurement));
+    document.querySelectorAll('#installationRow [data-installation]').forEach(b => b.classList.toggle('active', wantsInstallation !== null && (b.dataset.installation === 'yes') === wantsInstallation));
+    customerInfo = Object.assign({ naam:'', email:'', telefoon:'', adres:'', postcode:'', plaats:'' }, d.customerInfo || {});
+    [['custNaam','naam'],['custEmail','email'],['custTelefoon','telefoon'],['custAdres','adres'],['custPostcode','postcode'],['custPlaats','plaats']].forEach(([id,key]) => { document.getElementById(id).value = customerInfo[key] || ''; });
+    if(d.room && d.room.walls) room = d.room;
+    roomEnabled = !!d.roomEnabled;
+    roomCabinetOffsetX = Number(d.roomCabinetOffsetX) || 0; roomCabinetOffsetZ = Number(d.roomCabinetOffsetZ) || 0; roomCabinetRotationDeg = Number(d.roomCabinetRotationDeg) || 0;
+    if(roomEnabled) document.getElementById('viewRoomBtn').style.display = '';
+    zoomDist = null;
+    if(walls.length > 1){ rotY = 0.55; rotX = -0.3; }
+    const step = Number(d.wizardStep) || 1;
+    wizardStep = (mainConfigReady() && step >= 1 && step <= WIZARD_STEP_COUNT) ? step : 1;
+    render();
+  } catch(e){
+    // bewaard ontwerp past niet (meer) bij deze versie van de configurator: gewoon leeg beginnen
+    try{ localStorage.removeItem(DESIGN_STORE_KEY); }catch(e2){}
+    location.reload();
+    return false;
+  } finally {
+    suppressWizardScroll = false;
+  }
+  return true;
+}
+if(restoreDesign()){
+  designTouched = true; // blijft bewaard, ook als de bezoeker nu niets meer wijzigt
+  const note = document.getElementById('restoreNote');
+  if(note){
+    note.innerHTML = 'Je vorige ontwerp is teruggezet, dus je kunt verder waar je gebleven was. <button type="button" class="mini-remove" id="restoreResetBtn" style="font-size:13px;">Liever opnieuw beginnen</button>';
+    note.style.display = 'block';
+    armResetButton(document.getElementById('restoreResetBtn'));
+  }
+}
+(function(){
+  const embed = document.getElementById('configuratorEmbed');
+  if(embed) ['click','input','change'].forEach(ev => embed.addEventListener(ev, () => { designTouched = true; }, true));
+  setInterval(saveDesign, 2000);
+  window.addEventListener('pagehide', saveDesign);
+  document.addEventListener('visibilitychange', () => { if(document.hidden) saveDesign(); });
+})();
 
 window.addEventListener('resize', () => renderCanvas2d());
 render();
