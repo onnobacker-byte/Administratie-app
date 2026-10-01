@@ -386,6 +386,29 @@
   #configuratorEmbed .cs-more summary {cursor:pointer;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);padding:4px 0;}
   #configuratorEmbed .cs-more-body {padding-top:10px;}
   #configuratorEmbed .cs-more-body .extra-row {margin-bottom:8px;}
+  /* instellingen van één vak, in vaste groepen: Inhoud / Deur / Openen / Extra / Maten */
+  #configuratorEmbed .cs-group {padding:14px 0;border-top:1px solid var(--line);}
+  #configuratorEmbed .cs-group-title {font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--oak-dark);margin-bottom:10px;}
+  #configuratorEmbed .cs-group .cs-row {display:grid;grid-template-columns:1fr;gap:5px;margin-bottom:12px;}
+  #configuratorEmbed .cs-group .cs-row:last-child {margin-bottom:0;}
+  #configuratorEmbed .cs-group .cs-label {width:auto;text-transform:none;letter-spacing:0;font-size:12px;}
+  #configuratorEmbed .cs-opts {display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  #configuratorEmbed .cs-opts .type-btn.sm {min-width:34px;justify-content:center;}
+  #configuratorEmbed .cs-more {border-top:1px solid var(--line);margin:0;padding-top:12px;}
+  #configuratorEmbed .cs-more summary {font-size:12px;color:var(--ink);font-weight:700;}
+  #configuratorEmbed .cs-more .extra-row {display:grid;grid-template-columns:150px auto auto;justify-content:start;align-items:center;gap:6px 10px;}
+  #configuratorEmbed .extra-row input[type=number] {background:#fff;color:var(--ink);font-size:13px;}
+  #configuratorEmbed .cs-more-body .cs-row {display:grid;grid-template-columns:1fr;gap:5px;margin-bottom:12px;}
+  #configuratorEmbed .cs-more-body .cs-label {width:auto;text-transform:none;letter-spacing:0;font-size:12px;}
+  #configuratorEmbed .cs-more-body #csMergeRow {display:flex;flex-wrap:wrap;gap:6px;}
+  @media(max-width:640px){
+    #configuratorEmbed .cs-more .extra-row {grid-template-columns:1fr auto auto;}
+  }
+  /* stap 3: aantal kastdelen per verdieping */
+  #configuratorEmbed .row-parts {flex-basis:100%;display:flex;align-items:center;gap:8px;padding:2px 0 6px 74px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:var(--graphite);}
+  #configuratorEmbed .row-parts .stepper-btn {width:30px;height:28px;font-size:15px;border-radius:999px;border:1.5px solid var(--line);}
+  #configuratorEmbed .row-parts strong {min-width:16px;text-align:center;color:var(--ink);}
+  @media(max-width:640px){ #configuratorEmbed .row-parts {padding-left:0;} }
 
   /* STAPPENPLAN */  #configuratorEmbed .wizard {display:flex;gap:28px;align-items:flex-start;}
   #configuratorEmbed .wizard-rail {display:flex;flex-direction:column;align-items:flex-start;padding-top:6px;flex-shrink:0;position:sticky;top:96px;}
@@ -877,7 +900,7 @@
 
           <div class="type-row" id="wallTabsRow3" style="display:none;margin-bottom:16px;"></div>
 
-          <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.</p>
+          <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.<br>Per verdieping kun je ook kiezen hoeveel kastdelen er naast elkaar komen, bijvoorbeeld onderin één breed vak voor een tv.</p>
 
           <div class="panel">
             <h2 class="section-title">Verdiepingen (op elkaar, van onder naar boven)</h2>
@@ -2038,6 +2061,50 @@ function clearWidthSpan(rowId, colId){
   cell.widthSpanDir = 'rechts';
 }
 
+// ---- Aantal kastdelen per verdieping (bijv. een tv-kast: onderin 1 breed vak, erboven 3 kastdelen) ----
+// Werkt met de bestaande bouwstenen: de kolommen blijven de "kleinste" verdeling van de kast; een verdieping met minder
+// kastdelen voegt kolommen samen (widthSpan) en geeft elk deel dezelfde breedte (widthCm, zie rowOverrideLayout).
+// row.parts = gekozen aantal (null = gewoon de kolommen volgen); row.partsSig voorkomt dat dit bij elke render opnieuw
+// wordt toegepast, zodat een daarna zelf ingestelde "vrije breedte" van een vak blijft staan.
+function rowPartsCount(row){ return computeColSpans(row.id).length; }
+function applyRowParts(){
+  const C = cols.length;
+  if(!C) return;
+  const totalW = cols.reduce((sum,c)=>sum+c.width,0);
+  rows.forEach(row => {
+    if(!row.parts) return;
+    const n = Math.max(1, Math.min(row.parts, C));
+    const sig = C + '|' + n + '|' + Math.round(totalW*10) + '|' + cols.map(c=>c.id).join(',');
+    if(row.partsSig === sig) return;
+    row.partsSig = sig;
+    const base = Math.floor(C / n), extra = C % n;
+    let idx = 0;
+    for(let g=0; g<n; g++){
+      const size = base + (g < extra ? 1 : 0);
+      const startCell = getCell(row.id, cols[idx].id);
+      startCell.widthSpan = size; startCell.widthSpanDir = 'rechts';
+      // alle delen even breed; het laatste deel vangt de afronding op
+      startCell.widthCm = (n > 1 && n < C && g < n-1) ? totalW / n : null;
+      for(let k=1; k<size; k++){ const c2 = getCell(row.id, cols[idx+k].id); c2.widthSpan = 1; c2.widthCm = null; }
+      idx += size;
+    }
+  });
+}
+function setRowParts(rowId, n){
+  const row = rows.find(r=>r.id===rowId);
+  if(!row) return;
+  n = Math.max(1, Math.min(12, n));
+  if(n > cols.length){
+    // er zijn meer kolommen nodig: de andere verdiepingen houden hun huidige aantal kastdelen
+    rows.forEach(r => { if(r !== row && !r.parts) r.parts = rowPartsCount(r); r.partsSig = null; });
+    cols.forEach(c => { c.isFiller = true; });
+    recomputeFillers(undefined, n);
+  }
+  row.parts = n; row.partsSig = null;
+  if(selectedCell && selectedCell.rowId === rowId) selectedCell = null;
+  applyRowParts();
+  render();
+}
 function handleAddRow(){
   rows.push({ id: uid('r'), height: 20, fixed:false });
   recomputeRowFlex();
@@ -2122,6 +2189,11 @@ function renderRowList(){
       <span class="lbl">verdieping ${realIdx+1}${r.fixed?' 🔒':''}</span>
       <input type="number" min="20" max="250" step="0.1" value="${Math.round(r.height*10)/10}" data-rowheight="${r.id}"> cm hoog
       ${rows.length>1 ? `<button class="mini-remove" data-rowremove="${r.id}">verwijderen</button>` : `<span style="color:#c4c1b8;font-family:Arial,Helvetica,sans-serif;font-size:11px;">minimaal 1 verdieping</span>`}
+      <div class="row-parts">Kastdelen naast elkaar:
+        <button type="button" class="stepper-btn" data-rowparts="${r.id}" data-delta="-1" aria-label="Minder kastdelen op verdieping ${realIdx+1}">−</button>
+        <strong>${rowPartsCount(r)}</strong>
+        <button type="button" class="stepper-btn" data-rowparts="${r.id}" data-delta="1" aria-label="Meer kastdelen op verdieping ${realIdx+1}">+</button>
+      </div>
     `;
     list.appendChild(item);
   });
@@ -2142,6 +2214,13 @@ function renderRowList(){
   });
   list.querySelectorAll('[data-rowremove]').forEach(btn=>{
     btn.addEventListener('click', e=>removeRow(e.target.dataset.rowremove));
+  });
+  list.querySelectorAll('[data-rowparts]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = e.currentTarget.dataset.rowparts;
+      const r = rows.find(x=>x.id===id);
+      if(r) setRowParts(id, rowPartsCount(r) + Number(e.currentTarget.dataset.delta));
+    });
   });
 }
 
@@ -2890,30 +2969,38 @@ function renderCellEditorInner(backdrop, box){
   const line = (label, inner) => `<div class="cs-row"><span class="cs-label">${label}</span>${inner}</div>`;
   const nums = (n) => Array.from({length:n}, (_,i)=>[i+1, i+1]);
 
-  let html = `<div class="cs-title">Instellingen — verdieping ${rIdx+1}, kastdeel ${cIdx+1}</div>`;
-  if(cell.type==='planken') html += line('Planken', btns('shelves', nums(6), Number(cell.options.shelves)||3));
-  if(cell.type==='laden') html += line('Laden', btns('drawers', nums(6), Number(cell.options.drawers)||3));
-  html += line('Deur', btns('door', [['no','Geen deur'],['yes','Deur']], hasDoor ? 'yes' : 'no'));
+  // per groep alleen tonen wat bij dit vak hoort: Inhoud / Deur / Openen / Extra, en de maten ingeklapt eronder
+  const group = (title, inner) => inner ? `<div class="cs-group"><div class="cs-group-title">${title}</div>${inner}</div>` : '';
+  const line2 = (label, inner) => `<div class="cs-row"><span class="cs-label">${label}</span><div class="cs-opts">${inner}</div></div>`;
+  let html = `<div class="cs-title" style="border-top:none;padding-top:4px;">Vak op verdieping ${rIdx+1}, kastdeel ${cIdx+1}</div>`;
+  let inhoud = '';
+  if(cell.type==='planken') inhoud += line2('Aantal planken', btns('shelves', nums(6), Number(cell.options.shelves)||3));
+  if(cell.type==='laden') inhoud += line2('Aantal laden', btns('drawers', nums(6), Number(cell.options.drawers)||3));
+  if(cell.type==='kledinglift') inhoud += line2('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
+  html += group('Inhoud', inhoud);
+  let deur = line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
   if(hasDoor){
-    html += line('Aantal deuren', btns('doors', [[1,'1'],[2,'2']], nDoors));
-    if(nDoors === 1) html += line('Scharnier', btns('hinge', [['links','Links'],['rechts','Rechts']], dCell.hinge||'links'));
-    // altijd tonen (ook bij de bovenste modules): de deur loopt dan over dit vak en de rij(en) eronder
-    if(rows.length > 1) html += line('Deur over', btns('doorspan', nums(rows.length), doorSpan) + `<span class="cs-hint">verdiepingen hoog</span>`);
+    if(nDoors === 1) deur += line2('Scharnier', btns('hinge', [['links','Links'],['rechts','Rechts']], dCell.hinge||'links'));
+    // de deur kan over dit vak en de verdieping(en) eronder lopen
+    if(rows.length > 1) deur += line2('Hoogte', btns('doorspan', nums(rows.length), doorSpan) + `<span class="cs-hint">${doorSpan===1?'verdieping':'verdiepingen'}</span>`);
   }
-  if(cell.type==='kledinglift') html += line('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
-  if(showHandleOption) html += line('Openen', btns('handle', [['greep','Handgreep'],['push','Push to open']], hasHandle(hasDoor ? dCell : cell)?'greep':'push'));
-  if(hasDoor && hasHandle(dCell)) html += line('Greepstand', btns('handleorient', [['vert','Staand'],['horiz','Liggend']], dCell.handleOrient==='horiz' ? 'horiz' : 'vert'));
+  html += group('Deur', deur);
+  let openen = '';
+  if(showHandleOption){
+    openen += line2('Openen met', btns('handle', [['greep','Handgreep'],['push','Push to open']], hasHandle(hasDoor ? dCell : cell)?'greep':'push'));
+    if(hasDoor && hasHandle(dCell)) openen += line2('Handgreep', btns('handleorient', [['vert','Staand'],['horiz','Liggend']], dCell.handleOrient==='horiz' ? 'horiz' : 'vert'));
+  }
+  html += group('Openen', openen);
   if(EXTRA_OPTIES.length){
-    html += line('Extra opties', EXTRA_OPTIES.map(o => `<button type="button" class="type-btn sm ${cell.extras&&cell.extras[o.id]?'active':''}" data-act="extra" data-extraid="${o.id}">${o.naam}</button>`).join(''));
+    html += group('Extra', `<div class="cs-opts">${EXTRA_OPTIES.map(o => `<button type="button" class="type-btn sm ${cell.extras&&cell.extras[o.id]?'active':''}" data-act="extra" data-extraid="${o.id}">${o.naam}</button>`).join('')}</div>`);
   }
   html += `<details class="cs-more" id="csMore" ${cellSettingsMoreOpen?'open':''}>
-      <summary>Meer: maten van dit vak</summary>
+      <summary>Maten van dit vak aanpassen</summary>
       <div class="cs-more-body">
         <div class="extra-row" id="rowHeightExtra"></div>
         <div class="extra-row" id="rowDepthExtra"></div>
-        ${line('Diepte uitlijnen', btns('depthalign', [['voor','Voorkant gelijk'],['achter','Achterkant gelijk']], cell.depthAlign === 'achter' ? 'achter' : 'voor'))}
+        ${line2('Ondieper vak', btns('depthalign', [['voor','Voorkant gelijk'],['achter','Achterkant gelijk']], cell.depthAlign === 'achter' ? 'achter' : 'voor'))}
         ${freeWidthPossible ? '<div class="extra-row" id="freeWidthExtra"></div>' : ''}
-        ${line('Breedte', `<span class="cs-hint" style="margin:0;">${Math.round(spanWidthCm*10)/10} cm${colSpan>1?` (${colSpan} kastdelen samengevoegd)`:''}</span>`)}
         <div class="cs-row" id="csMergeRow">
           ${canMergeLeft ? '<button type="button" class="type-btn sm" data-act="mergeLeft">+ vak links erbij</button>' : ''}
           ${canMergeRight ? '<button type="button" class="type-btn sm" data-act="mergeRight">+ vak rechts erbij</button>' : ''}
@@ -2964,7 +3051,7 @@ function renderCellEditorInner(backdrop, box){
   if(freeWidthExtra){
     const hasOvr = Number(cell.widthCm) > 0;
     freeWidthExtra.innerHTML = `
-      <label>Vrije breedte (cm)</label>
+      <label>Breedte (cm)</label>
       <input type="number" min="10" step="0.5" value="${Math.round(moduleWidthNow*10)/10}" data-freewidth="1">
       ${hasOvr ? '<button class="mini-remove" id="resetFreeWidthBtn">terugzetten</button>' : ''}
     `;
@@ -2984,7 +3071,7 @@ function renderCellEditorInner(backdrop, box){
     for(let i=ownerIdx; i<ownerIdx+doorSpan; i++) doorSpanHeightCm += effHeightsForModal[i];
     const defaultY = (dCell.handleOrient === 'horiz') ? Math.min(5, Math.round(doorSpanHeightCm*10)/10) : Math.round((doorSpanHeightCm/2)*10)/10;
     const currentY = (dCell.handleY===null || dCell.handleY===undefined) ? defaultY : Math.min(dCell.handleY, doorSpanHeightCm);
-    handleYExtra.innerHTML = `<label>Greephoogte (cm vanaf boven)</label><input type="number" min="0" max="${Math.round(doorSpanHeightCm*10)/10}" step="0.5" value="${currentY}" data-opt="handleY">`;
+    handleYExtra.innerHTML = `<label>Handgreep (cm vanaf boven)</label><input type="number" min="0" max="${Math.round(doorSpanHeightCm*10)/10}" step="0.5" value="${currentY}" data-opt="handleY">`;
     handleYExtra.querySelector('[data-opt]').addEventListener('input', e=>{
       getCell(rows[ownerIdx].id, col.id).handleY = parseNum(e.target.value)||0;
       renderKeepingEditorFocus();
@@ -3003,7 +3090,12 @@ function renderCellEditorInner(backdrop, box){
       const rNow = rows.findIndex(r => r.id === selectedCell.rowId);
       const spNow = computeDoorSpans(col.id).find(s => s.startIdx <= rNow && rNow <= s.endIdx);
       const ownerCell = spNow ? getCell(rows[spNow.startIdx].id, col.id) : c;
-      if(act==='door'){
+      if(act==='doorcount'){
+        const n = Number(val);
+        if(n === 0){ if(spNow){ ownerCell.door = false; ownerCell.doorSpan = 1; } c.door = false; }
+        else { if(!spNow){ c.door = true; c.doorSpan = 1; c.options.doors = n; } else ownerCell.options.doors = n; }
+      }
+      else if(act==='door'){
         if(val==='yes'){ if(!spNow){ c.door = true; c.doorSpan = 1; } }
         else { if(spNow){ ownerCell.door = false; ownerCell.doorSpan = 1; } c.door = false; }
       }
@@ -3048,6 +3140,7 @@ function renderCellEditorInner(backdrop, box){
         }
       }
       else if(act==='unmerge') clearWidthSpan(row.id, col.id);
+      if(act==='mergeRight' || act==='mergeLeft' || act==='unmerge'){ row.parts = null; row.partsSig = null; }
       render();
     });
   });
@@ -5359,6 +5452,7 @@ function renderLedList(){
 }
 
 function render(){
+  applyRowParts();
   renderWallTabs();
   renderRowList();
   renderColList();
