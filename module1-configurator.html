@@ -409,6 +409,17 @@
   #configuratorEmbed .row-parts .stepper-btn {width:30px;height:28px;font-size:15px;border-radius:999px;border:1.5px solid var(--line);}
   #configuratorEmbed .row-parts strong {min-width:16px;text-align:center;color:var(--ink);}
   @media(max-width:640px){ #configuratorEmbed .row-parts {padding-left:0;} }
+  #configuratorEmbed .row-sizes {flex-basis:100%;margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:12px;}
+  #configuratorEmbed .row-sizes summary {cursor:pointer;color:var(--ink);font-weight:700;padding:2px 0;}
+  #configuratorEmbed .row-sizes-body {margin-top:8px;padding:10px 12px;background:#faf9f6;border:1px solid var(--line);border-radius:var(--radius-field);}
+  #configuratorEmbed .part-size {display:grid;grid-template-columns:auto auto;justify-content:start;align-items:center;gap:4px 16px;margin-bottom:10px;color:var(--graphite);}
+  #configuratorEmbed .part-size > span {grid-column:1/-1;font-weight:700;color:var(--ink);}
+  #configuratorEmbed .part-size label {display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  #configuratorEmbed .part-size input {width:64px;padding:6px 8px;border:1.5px solid var(--line);border-radius:var(--radius-pill);text-align:center;background:#fff;color:var(--ink);font-size:13px;}
+  #configuratorEmbed .part-size input:disabled {background:transparent;color:var(--graphite);}
+  #configuratorEmbed .row-sizes-hint {font-size:11px;color:var(--graphite);margin:4px 0 6px;}
+  @media(max-width:640px){
+  }
 
   /* STAPPENPLAN */  #configuratorEmbed .wizard {display:flex;gap:28px;align-items:flex-start;}
   #configuratorEmbed .wizard-rail {display:flex;flex-direction:column;align-items:flex-start;padding-top:6px;flex-shrink:0;position:sticky;top:96px;}
@@ -748,7 +759,7 @@
 <div class="wrap">
   <div class="eyebrow">Module1 — configurator</div>
   <h2 class="wrap-title">Stel je eigen opbouw samen</h2>
-  <p class="sub">Volg de stappen hieronder. Je ziet je kast meteen in 3D en de prijs rekent live mee. Je ontwerp wordt op dit apparaat bewaard, dus je kunt later verder gaan.</p>
+  <p class="sub">Volg de stappen hieronder. Je ziet je kast meteen in 3D en de prijs rekent live mee.</p>
   <div id="restoreNote" style="display:none;font-family:Arial,Helvetica,sans-serif;font-size:13px;background:var(--sand);border-radius:var(--radius-field);padding:10px 14px;margin:-12px 0 22px;"></div>
 
   <!-- Verborgen zolang interpret-configurator.php niet op de site staat: zonder dat script geeft "Verwerk mijn wens" altijd een foutmelding. -->
@@ -2105,6 +2116,69 @@ function setRowParts(rowId, n){
   applyRowParts();
   render();
 }
+// ---- Breedte en hoogte per kastdeel (stap 3) ----
+// Breedte = vrije breedte van dat vak (cell.widthCm, zie rowOverrideLayout): de andere kastdelen op dezelfde verdieping
+// delen de rest, dus de totale breedte blijft gelijk. Hoogte = eigen hoogte van dat vak (col.rowOverrides, zie
+// getEffectiveRowHeightsFor): de verdieping(en) erboven in die kolom passen zich aan, de totale hoogte blijft gelijk.
+const openPartSizeRows = new Set(); // welke "Maten per kastdeel"-blokken openstaan (blijft zo na het opnieuw tekenen)
+function partWidthCm(row, span){
+  const ov = rowOverrideLayout(row.id);
+  if(ov && ov[span.startIdx]) return ov[span.startIdx].w;
+  return widthOfColSpan(span.startIdx, span.endIdx);
+}
+function setPartWidth(rowId, startIdx, v){
+  const spans = computeColSpans(rowId);
+  if(spans.length < 2) return;
+  const cell = getCell(rowId, cols[startIdx].id);
+  cell.widthCm = (v > 0) ? Math.max(10, v) : null;
+  // minstens één kastdeel moet de rest van de breedte kunnen opvangen
+  if(spans.every(sp => Number(getCell(rowId, cols[sp.startIdx].id).widthCm) > 0)){
+    const other = spans.slice().reverse().find(sp => sp.startIdx !== startIdx);
+    if(other) getCell(rowId, cols[other.startIdx].id).widthCm = null;
+  }
+  render();
+}
+function setPartHeight(rowId, span, v){
+  // kastdeel over de hele breedte = gewoon de hoogte van de hele verdieping (zelfde als het veld "cm hoog")
+  const row = rows.find(r=>r.id===rowId);
+  if(row && span.startIdx === 0 && span.endIdx === cols.length-1 && v > 0){
+    cols.forEach(c => clearRowOverride(c.id, rowId));
+    row.height = Math.max(5, v); row.fixed = true;
+    rowFixOrder = rowFixOrder.filter(id=>id!==rowId); rowFixOrder.push(rowId);
+    recomputeRowFlex();
+    render();
+    return;
+  }
+  for(let ci=span.startIdx; ci<=span.endIdx; ci++){
+    if(v > 0) setRowOverride(cols[ci].id, rowId, Math.max(5, v)); else clearRowOverride(cols[ci].id, rowId);
+  }
+  render();
+}
+function resetPartSizes(rowId){
+  const row = rows.find(r=>r.id===rowId);
+  computeColSpans(rowId).forEach(sp => { getCell(rowId, cols[sp.startIdx].id).widthCm = null; });
+  cols.forEach(c => clearRowOverride(c.id, rowId));
+  if(row && row.parts) row.partsSig = null; // gelijke breedtes opnieuw laten verdelen
+  render();
+}
+function partSizesHtml(row, realIdx){
+  const spans = computeColSpans(row.id);
+  const r1 = v => Math.round(v*10)/10;
+  const items = spans.map((sp, i) => {
+    const h = getEffectiveRowHeights(cols[sp.startIdx])[realIdx];
+    return `<div class="part-size"><span>Deel ${i+1}</span>
+      <label>breed <input type="number" min="10" step="0.5" value="${r1(partWidthCm(row, sp))}" data-partwidth="${row.id}" data-start="${sp.startIdx}" ${spans.length<2?'disabled title="Eén kastdeel neemt altijd de hele breedte"':''}> cm</label>
+      <label>hoog <input type="number" min="5" step="0.5" value="${r1(h)}" data-partheight="${row.id}" data-start="${sp.startIdx}" data-end="${sp.endIdx}"> cm</label></div>`;
+  }).join('');
+  return `<details class="row-sizes" data-sizesrow="${row.id}" ${openPartSizeRows.has(row.id)?'open':''}>
+    <summary>Breedte en hoogte per kastdeel</summary>
+    <div class="row-sizes-body">
+      <p class="row-sizes-hint">Pas je één kastdeel aan, dan passen de andere zich aan. De totale breedte en hoogte van de kast blijven gelijk.</p>
+      ${items}
+      <button type="button" class="mini-remove" data-partreset="${row.id}">Alles weer gelijk verdelen</button>
+    </div>
+  </details>`;
+}
 function handleAddRow(){
   rows.push({ id: uid('r'), height: 20, fixed:false });
   recomputeRowFlex();
@@ -2194,6 +2268,7 @@ function renderRowList(){
         <strong>${rowPartsCount(r)}</strong>
         <button type="button" class="stepper-btn" data-rowparts="${r.id}" data-delta="1" aria-label="Meer kastdelen op verdieping ${realIdx+1}">+</button>
       </div>
+      ${partSizesHtml(r, realIdx)}
     `;
     list.appendChild(item);
   });
@@ -2221,6 +2296,21 @@ function renderRowList(){
       const r = rows.find(x=>x.id===id);
       if(r) setRowParts(id, rowPartsCount(r) + Number(e.currentTarget.dataset.delta));
     });
+  });
+  list.querySelectorAll('[data-sizesrow]').forEach(d=>{
+    d.addEventListener('toggle', ()=>{ if(d.open) openPartSizeRows.add(d.dataset.sizesrow); else openPartSizeRows.delete(d.dataset.sizesrow); });
+  });
+  list.querySelectorAll('[data-partwidth]').forEach(inp=>{
+    inp.addEventListener('change', e=>setPartWidth(e.target.dataset.partwidth, Number(e.target.dataset.start), parseNum(e.target.value)));
+  });
+  list.querySelectorAll('[data-partheight]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const t = e.target;
+      setPartHeight(t.dataset.partheight, { startIdx:Number(t.dataset.start), endIdx:Number(t.dataset.end) }, parseNum(t.value));
+    });
+  });
+  list.querySelectorAll('[data-partreset]').forEach(btn=>{
+    btn.addEventListener('click', e=>resetPartSizes(e.currentTarget.dataset.partreset));
   });
 }
 
@@ -6774,6 +6864,8 @@ document.getElementById('tariffLoadBtn').addEventListener('click', () => {
 // gegevens) elke paar seconden in de browser bewaard. Bij een volgend bezoek (of na per ongeluk herladen) komt het
 // terug. "Opnieuw beginnen" wist het weer.
 const DESIGN_STORE_KEY = 'module1_ontwerp_v1';
+// Voorlopig UIT (testfase): op true zetten om ontwerpen weer automatisch te bewaren en terug te zetten.
+const DESIGN_AUTOSAVE = false;
 let designTouched = false, designResetting = false, lastSavedDesign = '';
 function designSnapshot(){
   return {
@@ -6785,7 +6877,7 @@ function designSnapshot(){
   };
 }
 function saveDesign(){
-  if(!designTouched || designResetting) return;
+  if(!DESIGN_AUTOSAVE || !designTouched || designResetting) return;
   try{
     const str = JSON.stringify(designSnapshot());
     if(str !== lastSavedDesign){ localStorage.setItem(DESIGN_STORE_KEY, str); lastSavedDesign = str; }
@@ -6798,6 +6890,7 @@ function resetDesign(){
   location.reload();
 }
 function restoreDesign(){
+  if(!DESIGN_AUTOSAVE){ try{ localStorage.removeItem(DESIGN_STORE_KEY); }catch(e){} return false; }
   let d = null;
   try{ d = JSON.parse(localStorage.getItem(DESIGN_STORE_KEY) || 'null'); }catch(e){ return false; }
   if(!d || d.v !== 1 || !d.current || !['wandkast','hoekopstelling','keuken'].includes(d.projectType)) return false;
