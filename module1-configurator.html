@@ -530,6 +530,39 @@
   /* PRIJSLIJST (begroting) is voor bezoekers verborgen; alleen zichtbaar in beheer-stand */
   #pricingPanel{display:none;}
   body.beheer #pricingPanel{display:block;}
+  /* MEES — praathulp linksonder (rechtsonder staat in beheer-stand de beheer-knop) */
+  #mees{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:1500;font-family:Arial,Helvetica,sans-serif;}
+  #meesOpen{display:flex;align-items:center;gap:8px;padding:6px 16px 6px 6px;border-radius:999px;border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);cursor:pointer;box-shadow:0 8px 24px rgba(21,21,19,.18);font-size:14px;font-weight:700;}
+  #meesOpen svg{width:40px;height:40px;}
+  #meesPanel{position:absolute;left:0;bottom:0;width:min(360px, calc(100vw - 32px));height:min(540px, calc(100vh - 120px));height:min(540px, calc(100svh - 120px));background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 16px 48px rgba(21,21,19,.25);display:flex;flex-direction:column;overflow:hidden;}
+  #meesPanel[hidden]{display:none;}
+  .mees-head{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--ink);color:var(--paper);}
+  .mees-head svg{width:52px;height:52px;flex-shrink:0;}
+  .mees-head strong{display:block;font-size:16px;}
+  .mees-head span{font-size:12px;color:#c6c4bb;}
+  .mees-head .mees-tools{margin-left:auto;display:flex;gap:6px;}
+  .mees-head button{background:transparent;border:1.5px solid rgba(238,236,229,.35);color:var(--paper);border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:15px;}
+  .mees-chat{flex:1;min-height:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--paper);}
+  .mees-msg{max-width:88%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
+  .mees-msg.bot{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:5px;color:var(--ink);}
+  .mees-msg.me{background:var(--ink);color:var(--paper);align-self:flex-end;border-bottom-right-radius:5px;}
+  .mees-act{align-self:flex-start;font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:999px;border:1.5px solid var(--oak);background:#fff;color:var(--oak-dark);cursor:pointer;}
+  .mees-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 0;background:#fff;}
+  .mees-chips button{font:inherit;font-size:12px;padding:6px 11px;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;}
+  .mees-form{display:flex;gap:8px;padding:10px 14px 14px;background:#fff;}
+  .mees-form input{flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 14px;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--ink);}
+  .mees-form button{font:inherit;font-weight:700;font-size:14px;padding:10px 16px;border-radius:999px;border:none;background:var(--ink);color:var(--paper);cursor:pointer;}
+  #mees button:focus-visible, #mees input:focus-visible{outline:3px solid var(--oak);outline-offset:2px;}
+  #meesOpen[hidden]{display:none;}
+  #mees .mees-form{flex-direction:row;align-items:center;gap:8px;}
+  #mees .mees-form input{padding:10px 14px;border-radius:999px;}
+  #mees .mees-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;}
+  #mees .mees-chips button{flex-shrink:0;}
+  .mees-eye{transform-box:fill-box;transform-origin:center;animation:meesBlink 5s infinite;}
+  @keyframes meesBlink{0%,94%,100%{transform:scaleY(1);}96%{transform:scaleY(.1);}}
+  @media (prefers-reduced-motion: reduce){ .mees-eye{animation:none;} }
+  @media print{ #mees{display:none !important;} }
+  body.quote-open #mees{display:none;}
   #beheerBadge{position:fixed;right:12px;bottom:12px;z-index:3000;padding:8px 14px;border-radius:999px;border:1.5px solid #151513;background:#b08655;color:#151513;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:none;}
   body.beheer #beheerBadge{display:block;}
   /* OFFERTE OP BRIEFPAPIER */
@@ -1257,6 +1290,24 @@
   </div>
 </footer>
 
+<div id="mees">
+  <button type="button" id="meesOpen" aria-expanded="false" aria-controls="meesPanel"><svg viewBox="0 0 160 160" aria-hidden="true"><circle cx="80" cy="84" r="62" fill="#f2c9a5"/><path d="M22 70 C26 26, 134 26, 138 70 C126 46, 98 38, 80 40 C62 38, 34 46, 22 70 Z" fill="#151513" opacity=".85"/><circle cx="50" cy="104" r="10" fill="#e9a587" opacity=".55"/><circle cx="110" cy="104" r="10" fill="#e9a587" opacity=".55"/><g class="mees-eye"><ellipse cx="58" cy="82" rx="9" ry="11" fill="#fff"/><circle cx="58" cy="84" r="5" fill="#151513"/></g><g class="mees-eye"><ellipse cx="102" cy="82" rx="9" ry="11" fill="#fff"/><circle cx="102" cy="84" r="5" fill="#151513"/></g><ellipse  cx="80" cy="116" rx="16" ry="3" fill="#7a3b33"/></svg>Vraag het Mees</button>
+  <div id="meesPanel" role="dialog" aria-label="Mees, de hulp van Module1" hidden>
+    <div class="mees-head"><svg viewBox="0 0 160 160" aria-hidden="true"><circle cx="80" cy="84" r="62" fill="#f2c9a5"/><path d="M22 70 C26 26, 134 26, 138 70 C126 46, 98 38, 80 40 C62 38, 34 46, 22 70 Z" fill="#151513" opacity=".85"/><circle cx="50" cy="104" r="10" fill="#e9a587" opacity=".55"/><circle cx="110" cy="104" r="10" fill="#e9a587" opacity=".55"/><g class="mees-eye"><ellipse cx="58" cy="82" rx="9" ry="11" fill="#fff"/><circle cx="58" cy="84" r="5" fill="#151513"/></g><g class="mees-eye"><ellipse cx="102" cy="82" rx="9" ry="11" fill="#fff"/><circle cx="102" cy="84" r="5" fill="#151513"/></g><ellipse id="meesMouth" cx="80" cy="116" rx="16" ry="3" fill="#7a3b33"/></svg>
+      <div><strong>Mees</strong><span id="meesStatus">Hulp bij je kast op maat</span></div>
+      <div class="mees-tools">
+        <button type="button" id="meesSound" aria-pressed="true" title="Geluid aan/uit">🔊</button>
+        <button type="button" id="meesClose" title="Sluiten" aria-label="Sluiten">✕</button>
+      </div>
+    </div>
+    <div class="mees-chat" id="meesChat" aria-live="polite"></div>
+    <div class="mees-chips" id="meesChips"></div>
+    <form class="mees-form" id="meesForm">
+      <input type="text" id="meesInput" placeholder="Stel je vraag…" aria-label="Je vraag aan Mees" autocomplete="off">
+      <button type="submit">Vraag</button>
+    </form>
+  </div>
+</div>
 <button type="button" id="beheerBadge">Beheer aan - tik om te verbergen</button>
 <div id="quoteOverlay" style="display:none;">
   <div class="qo-toolbar">
@@ -6961,6 +7012,153 @@ if(restoreDesign()){
   setInterval(saveDesign, 2000);
   window.addEventListener('pagehide', saveDesign);
   document.addEventListener('visibilitychange', () => { if(document.hidden) saveDesign(); });
+})();
+
+// ---- Mees: praathulp met vaste antwoorden ----
+// Geen server of AI nodig: Mees herkent trefwoorden in de vraag en kiest het best passende antwoord uit de lijst
+// hieronder (daar zelf antwoorden aanpassen of toevoegen). Waar het past, krijgt het antwoord een knop die meteen naar
+// de juiste stap van de configurator springt. Antwoorden worden hardop voorgelezen (spraak van de browser).
+(function(){
+  const root = document.getElementById('mees');
+  if(!root) return;
+  const panel = document.getElementById('meesPanel');
+  const openBtn = document.getElementById('meesOpen');
+  const chat = document.getElementById('meesChat');
+  const input = document.getElementById('meesInput');
+  const statusEl = document.getElementById('meesStatus');
+  const mouth = document.getElementById('meesMouth');
+  const soundBtn = document.getElementById('meesSound');
+  const MAIL = 'info@module1.nl';
+
+  const norm = t => String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const priceNow = () => { const el = document.getElementById('previewTotalPrice'); return el ? el.textContent.trim() : ''; };
+  const STEP_HELP = {
+    1: 'Je bent bij stap 1. Kies wat je wilt maken: een kastenwand tussen twee muren, een hoekopstelling of een keuken. Daarna klik je op Volgende.',
+    2: 'Je bent bij stap 2, de afmetingen. Vul de breedte, hoogte en diepte van je kast in. Met de plus en min ga je per 10 centimeter. De rest van deze stap mag je laten staan als je het niet zeker weet.',
+    3: 'Je bent bij stap 3, de indeling. Je kast bestaat uit verdiepingen, op elkaar gestapeld, en kastdelen, naast elkaar. Je kunt per verdieping het aantal kastdelen kiezen, of een tv-vak in het midden maken.',
+    4: 'Je bent bij stap 4. Klik in het voorbeeld van je kast op een vak en kies wat erin komt: planken, laden, een kledingroede of een combinatie. Daar kies je ook of het vak een deur krijgt.',
+    5: 'Je bent bij stap 5. Kies een kleur voor de buitenkant, dus de deuren en de plint, en een kleur voor de binnenkant.',
+    6: 'Je bent bij stap 6. Kies per vak of je LED-verlichting wilt, links, rechts of aan beide kanten.',
+    7: 'Je bent bij stap 7. Geef aan of wij bij je langskomen om in te meten, en of wij de kast komen monteren.',
+    8: 'Je bent bij stap 8. Vul je gegevens in. Daarna kun je de offerte bekijken en aanvragen.',
+    9: 'Je bent bij stap 9. Dit is optioneel: je kunt je kamer intekenen en je kast er in 3D in zien staan.',
+  };
+  // trefwoorden (zonder accenten, kleine letters); hoe meer er in de vraag voorkomen, hoe beter het antwoord past
+  const TOPICS = [
+    { k:['hoi','hallo','hey','hee','goedemorgen','goedemiddag','goedenavond','dag mees'], a:()=> 'Hoi! Ik ben Mees. Vraag me gerust iets over je kast, de configurator, de prijs of de materialen.' },
+    { k:['bedankt','dank','dankjewel','top','super','fijn'], a:()=> 'Graag gedaan! Heb je nog een vraag, dan hoor ik het.' },
+    { k:['wie','module1','bedrijf','wat doen','wat doet'], a:()=> 'Module1 ontwerpt en bouwt kasten en interieurs op maat. Alles komt uit één modulair systeem, zodat elk kastdeel, elke plank en elke lade precies past. Het ontwerp gaat rechtstreeks naar onze werkplaats en wij komen het ook plaatsen.' },
+    { k:['hoe werkt','werkt het','configurator','beginnen','starten','begin','uitleg','stappen'], a:()=> 'Je stelt je kast in een paar stappen samen: soort kast, afmetingen, indeling, wat er in de vakken komt, kleur, verlichting, inmeten en montage, en je gegevens. Je ziet je kast meteen in 3D en de prijs rekent mee. Zal ik je naar het begin brengen?', step:1 },
+    { k:['deze stap','wat moet ik','waar ben ik','help','hulp','snap','begrijp','hier','nu doen'], a:()=> STEP_HELP[wizardStep] || STEP_HELP[1] },
+    { k:['soort','soorten','hoekopstelling','hoek','keuken','kastenwand','type','kookeiland'], a:()=> 'Je kunt een kastenwand tussen twee muren maken, een hoekopstelling met twee wanden haaks op elkaar, of een keuken. Bij een keuken kies je een rechte keuken, een L-opstelling, een U-opstelling of een keuken met kookeiland.', step:1 },
+    { k:['maat','maten','breedte','breed','hoogte','hoog','diepte','diep','afmeting','afmetingen','groot','cm','centimeter','meter'], a:()=> 'Je bepaalt zelf de maten. De breedte kan tot 10 meter, de hoogte tot 4 meter en de diepte tot 1 meter. De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 centimeter.', step:2 },
+    { k:['tv','televisie','televisiemeubel','tv meubel','tv kast'], a:()=> 'Ja, dat kan! In stap 3 klik je bij een verdieping op TV-vak in het midden en vul je de breedte van het tv-vak in. Boven en onder het tv-vak komen dan automatisch twee kastdelen die samen even breed zijn als het tv-vak.', step:3 },
+    { k:['verdieping','verdiepingen','kastdeel','kastdelen','indeling','vakken','vak','rij','rijen','kolom','kolommen'], a:()=> 'Je kast bestaat uit verdiepingen, op elkaar gestapeld, en kastdelen, naast elkaar. Waar die elkaar kruisen ontstaat een vak. In stap 3 kies je hoeveel verdiepingen je wilt en hoeveel kastdelen er per verdieping naast elkaar komen.', step:3 },
+    { k:['plank','planken','lade','laden','roede','kledingstang','hangen','kleding','kledinglift','lift','binnenkant','inhoud','opdeling'], a:()=> 'Per vak kies je wat erin komt: open, planken, laden, een kledingroede, een plank met roede, een roede met laden, of een kledinglift. Dat doe je in stap 4: klik op een vak in het voorbeeld en kies.', step:4 },
+    { k:['deur','deuren','scharnier','greep','handgreep','grepen','push','open'], a:()=> 'Elk vak kan een deur krijgen, of twee deuren. Een deur kan ook over meerdere verdiepingen lopen. Je kiest een handgreep, staand of liggend, of push to open zonder greep. Dat stel je in bij stap 4.', step:4 },
+    { k:['kleur','kleuren','materiaal','materialen','wit','zwart','eiken','eikenhout','noten','notenhout','hout','beige','grijs','antraciet','fineer','afwerking'], a:()=> 'Je kunt kiezen uit: ' + MATERIALS.map(m=>m.name.toLowerCase()).join(', ') + '. De buitenkant en de binnenkant van je kast mogen een andere kleur hebben. Dat kies je in stap 5.', step:5 },
+    { k:['led','licht','lampjes','lampen','verlichting','verlicht'], a:()=> 'Je kunt per vak LED-verlichting kiezen, links, rechts of aan beide kanten. In het 3D-voorbeeld zie je meteen hoe het eruitziet. Dat doe je in stap 6.', step:6 },
+    { k:['inmeten','meten','montage','monteren','plaatsen','ophangen','installeren','bouwen','zelf'], a:()=> 'Wij kunnen bij je langskomen om de ruimte precies in te meten, en we kunnen de kast ook komen monteren. Je kiest in stap 7 of je dat wilt, of dat je het liever zelf doet.', step:7 },
+    { k:['prijs','prijzen','kost','kosten','euro','duur','goedkoop','betalen','btw','budget'], a:()=> { const p = priceNow(); return (p && /\d/.test(p) ? 'Je huidige ontwerp kost ongeveer ' + p + ', exclusief btw. ' : '') + 'De prijs rekent live mee terwijl je ontwerpt, en hangt af van de maten, de indeling, de deuren, het materiaal en de verlichting. Het is een indicatie: na overleg en eventueel inmeten krijg je van ons een definitieve offerte.'; } },
+    { k:['offerte','aanvragen','aanvraag','bestellen','bestelling','kopen','opdracht','order'], a:()=> 'Als je ontwerp klaar is, vul je in stap 8 je gegevens in. Daar kun je de offerte bekijken en aanvragen, of in de offerte meteen op Bestelling plaatsen drukken. Wij nemen daarna contact met je op.', step:8 },
+    { k:['levertijd','wanneer','hoe lang','duurt','klaar','leveren','levering','planning','weken'], a:()=> 'De levertijd hangt af van je ontwerp en onze planning. Stuur je vraag naar ' + MAIL + ', dan laten we je weten wanneer je kast klaar kan zijn.' },
+    { k:['garantie','kwaliteit','sterk','stevig'], a:()=> 'Elke kast wordt in onze eigen werkplaats op maat gemaakt. Voor vragen over garantie kun je het beste mailen naar ' + MAIL + '.' },
+    { k:['contact','mail','mailen','email','bellen','telefoon','nummer','adres','langskomen','showroom','werkplaats','bezoeken','vraag stellen','mens','medewerker'], a:()=> 'Je kunt ons mailen op ' + MAIL + '. Onze werkplaats kun je op afspraak bezoeken. Onderaan deze pagina staat ook een contactformulier.' },
+    { k:['ruimte','kamer','plattegrond','muren','raam','ramen','intekenen'], a:()=> 'In stap 9, die optioneel is, kun je je kamer intekenen met muren, deuren en ramen, en je kast er in 3D in zien staan.', step:9 },
+    { k:['opslaan','bewaren','later','verder gaan','kwijt'], a:()=> 'Je ontwerp wordt op dit moment niet bewaard als je de pagina sluit. Vraag daarom een offerte aan als je tevreden bent, dan hebben wij je ontwerp.' },
+  ];
+  function answerFor(q){
+    const t = ' ' + norm(q) + ' ';
+    let best = null, bestScore = 0;
+    TOPICS.forEach(tp => {
+      let score = 0;
+      tp.k.forEach(w => { if(t.includes(' ' + w + ' ') || (w.length > 5 && t.includes(w))) score += w.includes(' ') ? 2 : 1; });
+      if(score > bestScore){ best = tp; bestScore = score; }
+    });
+    if(!best) return { text: 'Daar weet ik het antwoord niet precies op. Stel je vraag via ' + MAIL + ', dan helpen mijn collega\'s je graag verder. Je kunt mij ook vragen naar de prijs, de maten, de kleuren of hoe de configurator werkt.' };
+    return { text: best.a(), step: best.step };
+  }
+
+  // ---- stem en mond ----
+  let soundOn = true, nlVoice = null, mouthTimer = null;
+  const canSpeak = 'speechSynthesis' in window;
+  function pickVoice(){ try{ nlVoice = speechSynthesis.getVoices().find(v => /^nl(-|_|$)/i.test(v.lang)) || null; }catch(e){} }
+  if(canSpeak){ pickVoice(); try{ speechSynthesis.addEventListener('voiceschanged', pickVoice); }catch(e){} } else soundBtn.hidden = true;
+  function talk(on){
+    clearInterval(mouthTimer);
+    if(!mouth) return;
+    if(!on){ mouth.setAttribute('ry','3'); return; }
+    mouthTimer = setInterval(() => mouth.setAttribute('ry', String(3 + Math.random()*9)), 110);
+  }
+  function speak(text){
+    if(!canSpeak || !soundOn) return;
+    try{
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'nl-NL'; if(nlVoice) u.voice = nlVoice;
+      u.onstart = () => talk(true);
+      u.onend = u.onerror = () => talk(false);
+      speechSynthesis.speak(u);
+    }catch(e){ talk(false); }
+  }
+  function stopSpeaking(){ if(canSpeak){ try{ speechSynthesis.cancel(); }catch(e){} } talk(false); }
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    soundBtn.textContent = soundOn ? '🔊' : '🔇';
+    if(!soundOn) stopSpeaking();
+  });
+
+  function add(role, text){
+    const d = document.createElement('div');
+    d.className = 'mees-msg ' + role; d.textContent = text;
+    chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  }
+  function reply(q){
+    add('me', q);
+    const r = answerFor(q);
+    statusEl.textContent = 'Mees typt…';
+    setTimeout(() => {
+      add('bot', r.text);
+      if(r.step && mainConfigReady && (r.step === 1 || mainConfigReady())){
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'mees-act';
+        b.textContent = 'Breng me naar stap ' + r.step + ' →';
+        b.addEventListener('click', () => {
+          goToWizardStep(r.step);
+          if(window.innerWidth <= 640) close();
+        });
+        chat.appendChild(b); chat.scrollTop = chat.scrollHeight;
+      }
+      statusEl.textContent = 'Hulp bij je kast op maat';
+      speak(r.text);
+    }, 350);
+  }
+  const CHIPS = ['Hoe werkt het?', 'Wat kost mijn kast?', 'Welke kleuren zijn er?', 'Kan ik een tv-vak maken?', 'Wat moet ik nu doen?', 'Contact'];
+  const chips = document.getElementById('meesChips');
+  CHIPS.forEach(c => { const b = document.createElement('button'); b.type='button'; b.textContent = c; b.addEventListener('click', () => reply(c)); chips.appendChild(b); });
+
+  let greeted = false;
+  function open(){
+    panel.hidden = false; openBtn.hidden = true; openBtn.setAttribute('aria-expanded','true');
+    if(!greeted){
+      greeted = true;
+      const hi = 'Hoi! Ik ben Mees. Ik help je met je kast op maat. Stel me een vraag, of tik op een van de knoppen hieronder.';
+      add('bot', hi); speak(hi);
+    }
+    setTimeout(() => input.focus(), 50);
+  }
+  function close(){ panel.hidden = true; openBtn.hidden = false; openBtn.setAttribute('aria-expanded','false'); stopSpeaking(); openBtn.focus(); }
+  openBtn.addEventListener('click', open);
+  document.getElementById('meesClose').addEventListener('click', close);
+  panel.addEventListener('keydown', e => { if(e.key === 'Escape') close(); });
+  document.getElementById('meesForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if(!q) return;
+    input.value = '';
+    reply(q);
+  });
 })();
 
 window.addEventListener('resize', () => renderCanvas2d());
