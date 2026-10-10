@@ -111,7 +111,7 @@
         {
           "@type": "Question",
           "name": "Wat kan ik in een kast kiezen?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Per vak kies je open, planken, laden, een kledingroede, een tv-vak of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen." }
         },
         {
           "@type": "Question",
@@ -1226,7 +1226,7 @@
         </details>
         <details class="faq-item">
           <summary>Wat kan ik in een kast kiezen?</summary>
-          <p>Per vak kies je open, planken, laden, een kledingroede of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen.</p>
+          <p>Per vak kies je open, planken, laden, een kledingroede, een tv-vak of een combinatie zoals plank met roede of roede met laden. Vakken kunnen een deur krijgen (één of twee deuren, ook over meerdere verdiepingen) met een handgreep of push-to-open, en je kunt LED-verlichting links, rechts of aan beide zijkanten kiezen.</p>
         </details>
         <details class="faq-item">
           <summary>Kan Module1 mijn kast inmeten en monteren?</summary>
@@ -1558,6 +1558,18 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor){
       bolt.style.pointerEvents = 'none';
       container.appendChild(bolt);
     }
+  } else if(cell.type==='tv'){
+    // open vak met een tv erin (alleen ter illustratie; de tv zelf hoort niet bij de kast)
+    const sw = Math.min(w*0.86, (h*0.62)*16/9), sh = sw*9/16;
+    const sx = x + (w-sw)/2, sy = y + (h-sh)/2 - h*0.04;
+    const scr = document.createElementNS(NS,'rect');
+    scr.setAttribute('x', sx); scr.setAttribute('y', sy); scr.setAttribute('width', Math.max(0,sw)); scr.setAttribute('height', Math.max(0,sh));
+    scr.setAttribute('rx', 2); scr.setAttribute('fill', '#151513'); scr.style.pointerEvents = 'none';
+    container.appendChild(scr);
+    const foot = document.createElementNS(NS,'rect');
+    foot.setAttribute('x', x + w/2 - sw*0.12); foot.setAttribute('y', sy + sh + 2); foot.setAttribute('width', sw*0.24); foot.setAttribute('height', 3);
+    foot.setAttribute('fill', '#151513'); foot.style.pointerEvents = 'none';
+    container.appendChild(foot);
   }
 }
 const TYPES = [
@@ -1568,6 +1580,7 @@ const TYPES = [
   {id:'plank-roede', label:'Plank + Roede', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><line x1="10" y1="22" x2="50" y2="22" stroke="#b08655" stroke-width="3"/><line x1="14" y1="34" x2="46" y2="34" stroke="#b08655" stroke-width="3"/><path d="M20 34 v9 M30 34 v9 M40 34 v9" stroke="#151513" stroke-width="1.5"/>`},
   {id:'roede-laden', label:'Roede + Laden', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><line x1="14" y1="16" x2="46" y2="16" stroke="#b08655" stroke-width="3"/><path d="M20 16 v6 M30 16 v6 M40 16 v6" stroke="#151513" stroke-width="1.5"/><line x1="10" y1="34" x2="50" y2="34" stroke="#151513" stroke-width="1.5"/><line x1="24" y1="25" x2="36" y2="25" stroke="#b08655" stroke-width="2.5"/><line x1="24" y1="43" x2="36" y2="43" stroke="#b08655" stroke-width="2.5"/>`},
   {id:'kledinglift', label:'Kledinglift', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><path d="M14 12 L18 30 M46 12 L42 30" stroke="#151513" stroke-width="2" fill="none"/><line x1="17" y1="30" x2="43" y2="30" stroke="#b08655" stroke-width="3"/><path d="M24 30 v9 M30 30 v9 M36 30 v9" stroke="#151513" stroke-width="1.5"/><rect x="11" y="9" width="6" height="7" fill="#151513"/><rect x="43" y="9" width="6" height="7" fill="#151513"/>`},
+  {id:'tv', label:'TV-vak', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><rect x="14" y="20" width="32" height="19" rx="2" fill="#8a8a84" stroke="#151513" stroke-width="1.5"/><line x1="26" y1="42" x2="34" y2="42" stroke="#b08655" stroke-width="3" stroke-linecap="round"/>`},
 ];
 
 let rows = [ {id:'r0', height:100, fixed:false}, {id:'r1', height:100, fixed:false} ]; // index0 = bottom
@@ -2223,7 +2236,7 @@ function setTvRow(rowId, on){
     row.tvSig = null;
     applyTvLayout();
     const spec = tvLayoutSpec();
-    if(spec){ const tvCell = getCell(row.id, cols[spec.tvStart].id); tvCell.type = 'open'; tvCell.door = false; tvCell.doorSpan = 1; }
+    if(spec){ const tvCell = getCell(row.id, cols[spec.tvStart].id); tvCell.type = 'tv'; tvCell.door = false; tvCell.doorSpan = 1; }
   } else {
     row.tv = null; row.tvSig = null;
     // terug naar een gewone, gelijk verdeelde kast
@@ -3132,7 +3145,16 @@ function renderCellEditorInner(backdrop, box){
   if(cell.type==='laden') inhoud += line2('Aantal laden', btns('drawers', nums(6), Number(cell.options.drawers)||3));
   if(cell.type==='kledinglift') inhoud += line2('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
   html += group('Inhoud', inhoud);
-  let deur = line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
+  if(cell.type === 'tv'){
+    const maxSpan = Math.min(4, cols.length - cIdx);
+    if(maxSpan > 1){
+      html += group('TV-vak', line2('Breedte van het tv-vak', btns('tvspan', nums(maxSpan).map(([v]) => [v, v===1 ? '1 kastdeel' : v + ' kastdelen']), colSpan)
+        + `<span class="cs-hint">${Math.round(spanWidthCm)} cm breed — het vak wordt naar rechts breder</span>`));
+    } else {
+      html += group('TV-vak', `<p class="cs-hint" style="margin:0;">Dit tv-vak is ${Math.round(spanWidthCm)} cm breed. Wil je het breder, kies dan een vak verder naar links als tv-vak.</p>`);
+    }
+  }
+  let deur = cell.type === 'tv' ? '' : line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
   if(hasDoor){
     if(nDoors === 1) deur += line2('Scharnier', btns('hinge', [['links','Links'],['rechts','Rechts']], dCell.hinge||'links'));
     // de deur kan over dit vak en de verdieping(en) eronder lopen
@@ -3294,7 +3316,15 @@ function renderCellEditorInner(backdrop, box){
         }
       }
       else if(act==='unmerge') clearWidthSpan(row.id, col.id);
-      if(act==='mergeRight' || act==='mergeLeft' || act==='unmerge'){ row.parts = null; row.partsSig = null; }
+      else if(act==='tvspan'){
+        const n = Math.max(1, Math.min(Number(val), cols.length - cIdx));
+        c.widthSpan = n; c.widthSpanDir = 'rechts'; c.widthCm = null;
+        for(let k=1; k<n; k++){ const c2 = getCell(row.id, cols[cIdx+k].id); c2.widthSpan = 1; c2.widthCm = null; }
+        // een vak dat direct na het tv-vak begint, mag niet meer over het tv-vak heen liggen
+        const after = cIdx + n;
+        if(after < cols.length){ const ca = getCell(row.id, cols[after].id); ca.widthSpan = Math.max(1, Math.min(Number(ca.widthSpan)||1, cols.length - after)); }
+      }
+      if(act==='mergeRight' || act==='mergeLeft' || act==='unmerge' || act==='tvspan'){ row.parts = null; row.partsSig = null; }
       render();
     });
   });
@@ -4336,6 +4366,17 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           dot.position.set(cx, liftTop - 3.5, 3.3);
           cellGroup.add(dot);
         }
+      } else if(cell.type==='tv'){
+        const tvW = Math.max(10, Math.min(spanWidth - 10, (rh - 2*t - 10) * 16/9));
+        const tvH = tvW * 9/16;
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(tvW, tvH, 3), new THREE.MeshStandardMaterial({ color:0x111111, roughness:0.25, metalness:0.3 }));
+        screen.position.set(cx, cy + rh*0.03, -cellDepthEff/2 + t + 4);
+        screen.userData.noExport = true;
+        cellGroup.add(screen);
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(tvW - 2, tvH - 2), new THREE.MeshStandardMaterial({ color:0x1d2633, roughness:0.1, metalness:0.2, emissive:0x0b1220, emissiveIntensity:0.6 }));
+        glass.position.set(cx, cy + rh*0.03, -cellDepthEff/2 + t + 5.6);
+        glass.userData.noExport = true;
+        cellGroup.add(glass);
       }
 
       // LED-verlichting is een los kenmerk (los van het type Open/Planken/Laden/Roede) — een dunne,
@@ -5549,7 +5590,9 @@ function renderContentPanel(){
       // object): render() bouwt het 3D-model opnieuw op en zet daarbij rows/cols/cells terug — een
       // eerder vastgepakt `cell` kon daardoor al los staan van de echte gegevens.
       if(!selectedCell) return;
-      getCell(selectedCell.rowId, selectedCell.colId).type = e.currentTarget.dataset.contenttype;
+      const chosen = getCell(selectedCell.rowId, selectedCell.colId);
+      chosen.type = e.currentTarget.dataset.contenttype;
+      if(chosen.type === 'tv'){ chosen.door = false; chosen.doorSpan = 1; }
       render();
     });
   });
@@ -6236,6 +6279,7 @@ function quoteTypeText(cell){
   if(cell.type === 'laden') return lbl + ' (' + (Number(cell.options.drawers)||3) + ' laden)';
   if(cell.type === 'roede-laden') return lbl + ' (roede + ' + (Math.max(1, Number(cell.options.drawers)||2)) + ' laden)';
   if(cell.type === 'plank-roede') return lbl + ' (1 plank + roede)';
+  if(cell.type === 'tv') return 'Open tv-vak (tv niet inbegrepen)';
   if(cell.type === 'kledinglift') return lbl + ' (' + ((cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig') + ')';
   return lbl;
 }
@@ -6668,6 +6712,7 @@ function exportCabinetSTLBase64(){
     const getVert = (pos, mat, i) => { tmpV.set(pos.getX(i), pos.getY(i), pos.getZ(i)); tmpV.applyMatrix4(mat); return [tmpV.x*SCALE, tmpV.y*SCALE, tmpV.z*SCALE]; };
     modelGroup.traverse(obj => {
       if(!obj.isMesh || !obj.geometry || !obj.geometry.attributes || !obj.geometry.attributes.position) return;
+      if(obj.userData && obj.userData.noExport) return; // bijv. de tv in een tv-vak: geen onderdeel van de kast
       const geo = obj.geometry, pos = geo.attributes.position, idx = geo.index, mat = obj.matrixWorld;
       const count = idx ? idx.count : pos.count;
       for(let i=0; i<count; i+=3){
@@ -7059,9 +7104,9 @@ if(restoreDesign()){
     { k:['deze stap','wat moet ik','waar ben ik','help','hulp','snap','begrijp','hier','nu doen'], a:()=> STEP_HELP[wizardStep] || STEP_HELP[1] },
     { k:['soort','soorten','hoekopstelling','hoek','keuken','kastenwand','type','kookeiland'], a:()=> 'Je kunt een kastenwand tussen twee muren maken, een hoekopstelling met twee wanden haaks op elkaar, of een keuken. Bij een keuken kies je een rechte keuken, een L-opstelling, een U-opstelling of een keuken met kookeiland.', step:1 },
     { k:['maat','maten','breedte','breed','hoogte','hoog','diepte','diep','afmeting','afmetingen','groot','cm','centimeter','meter'], a:()=> 'Je bepaalt zelf de maten. De breedte kan tot 10 meter, de hoogte tot 4 meter en de diepte tot 1 meter. De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 centimeter.', step:2 },
-    { k:['tv','televisie','televisiemeubel','tv meubel','tv kast'], a:()=> 'Ja, dat kan! In stap 3 klik je bij een verdieping op TV-vak in het midden en vul je de breedte van het tv-vak in. Boven en onder het tv-vak komen dan automatisch twee kastdelen die samen even breed zijn als het tv-vak.', step:3 },
+    { k:['tv','televisie','televisiemeubel','tv meubel','tv kast'], a:()=> 'Ja, dat kan, en op elke plek in je kast. In stap 4 klik je op het vak waar de tv moet komen en kies je TV-vak. Daarna kies je hoe breed het wordt: 1, 2 of meer kastdelen. Wil je de tv precies in het midden, dan kan dat ook in stap 3 met TV-vak in het midden.', step:4 },
     { k:['verdieping','verdiepingen','kastdeel','kastdelen','indeling','vakken','vak','rij','rijen','kolom','kolommen'], a:()=> 'Je kast bestaat uit verdiepingen, op elkaar gestapeld, en kastdelen, naast elkaar. Waar die elkaar kruisen ontstaat een vak. In stap 3 kies je hoeveel verdiepingen je wilt en hoeveel kastdelen er per verdieping naast elkaar komen.', step:3 },
-    { k:['plank','planken','lade','laden','roede','kledingstang','hangen','kleding','kledinglift','lift','binnenkant','inhoud','opdeling'], a:()=> 'Per vak kies je wat erin komt: open, planken, laden, een kledingroede, een plank met roede, een roede met laden, of een kledinglift. Dat doe je in stap 4: klik op een vak in het voorbeeld en kies.', step:4 },
+    { k:['plank','planken','lade','laden','roede','kledingstang','hangen','kleding','kledinglift','lift','binnenkant','inhoud','opdeling'], a:()=> 'Per vak kies je wat erin komt: open, planken, laden, een kledingroede, een plank met roede, een roede met laden, een kledinglift of een tv-vak. Dat doe je in stap 4: klik op een vak in het voorbeeld en kies.', step:4 },
     { k:['deur','deuren','scharnier','greep','handgreep','grepen','push','open'], a:()=> 'Elk vak kan een deur krijgen, of twee deuren. Een deur kan ook over meerdere verdiepingen lopen. Je kiest een handgreep, staand of liggend, of push to open zonder greep. Dat stel je in bij stap 4.', step:4 },
     { k:['kleur','kleuren','materiaal','materialen','wit','zwart','eiken','eikenhout','noten','notenhout','hout','beige','grijs','antraciet','fineer','afwerking'], a:()=> 'Je kunt kiezen uit: ' + MATERIALS.map(m=>m.name.toLowerCase()).join(', ') + '. De buitenkant en de binnenkant van je kast mogen een andere kleur hebben. Dat kies je in stap 5.', step:5 },
     { k:['led','licht','lampjes','lampen','verlichting','verlicht'], a:()=> 'Je kunt per vak LED-verlichting kiezen, links, rechts of aan beide kanten. In het 3D-voorbeeld zie je meteen hoe het eruitziet. Dat doe je in stap 6.', step:6 },
