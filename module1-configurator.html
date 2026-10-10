@@ -2041,7 +2041,7 @@ function rowOverrideLayout(rowId){
   const anyMerge = rows.some(r => computeColSpans(r.id).some(sp => sp.endIdx > sp.startIdx));
   const eq = T / cols.length;
   items.forEach(o => {
-    o.base = (o.s.endIdx > o.s.startIdx) ? widthOfColSpan(o.s.startIdx, o.s.endIdx) : (anyMerge ? eq : cols[o.s.startIdx].width);
+    o.base = widthOfColSpan(o.s.startIdx, o.s.endIdx);
     o.fixed = Number(o.cell.widthCm) > 0;
   });
   const free = items.filter(o => !o.fixed);
@@ -2210,6 +2210,18 @@ function placeTvVak(rowId, start, width){
   const row = rows.find(r => r.id === rowId);
   if(row){ row.parts = null; row.partsSig = null; }
   selectedCell = { rowId, colId: cols[start].id };
+}
+function setTvVakWidthCm(start, span, W){
+  const total = cols.reduce((sum,c)=>sum+c.width,0);
+  const others = cols.filter((c,i) => i < start || i >= start+span);
+  if(!others.length) return;
+  const minOther = 15;
+  W = Math.max(20*span, Math.min(W, total - others.length*minOther));
+  for(let i=start; i<start+span; i++){ cols[i].width = W/span; cols[i].isFiller = false; }
+  const rest = (total - W) / others.length;
+  others.forEach(c => { c.width = rest; c.isFiller = true; });
+  // eerder ingestelde vrije breedtes per vak passen niet meer bij de nieuwe verdeling
+  rows.forEach(r => cols.forEach(c => { const cell = getCell(r.id, c.id); if(cell.widthCm) cell.widthCm = null; }));
 }
 function setTvWidth(rowId, v){
   const row = rows.find(r=>r.id===rowId);
@@ -2517,8 +2529,8 @@ function renderCanvas2d(targetId){
       const isMerged = span.endIdx > span.startIdx;
       // niet-samengevoegde vakken alleen gelijk verdeeld tonen als er ELDERS in deze wand
       // een echte samenvoeging actief is; anders gewoon de echte kolombreedtes gebruiken
-      let cw = isMerged ? colPixelW.slice(span.startIdx, span.endIdx+1).reduce((s,w)=>s+w,0) : (anyMergeExistsInWall2D ? equalColPixelW : colPixelW[span.startIdx]);
-      let xAcc = anyMergeExistsInWall2D ? equalColPixelLeft[span.startIdx] : colPixelLeft[span.startIdx];
+      let cw = colPixelW.slice(span.startIdx, span.endIdx+1).reduce((s,w)=>s+w,0);
+      let xAcc = colPixelLeft[span.startIdx];
       const ov2d = rowOverrideLayout(row.id);
       const ovCell2d = ov2d && ov2d[span.startIdx];
       const rh = colRowPixelH[span.startIdx][ri];
@@ -3113,7 +3125,9 @@ function renderCellEditorInner(backdrop, box){
     const C = cols.length, maxW = Math.min(4, C);
     let tvHtml = '';
     if(maxW > 1) tvHtml += line2('Breedte van het tv-vak', btns('tvspan', nums(maxW).map(([v]) => [v, v===1 ? '1 kastdeel' : v + ' kastdelen']), colSpan));
-    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">${Math.round(spanWidthCm)} cm breed, over kastdeel ${cIdx+1}${colSpan>1 ? ' t/m ' + (cIdx+colSpan) : ''}</p>`;
+    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Over kastdeel ${cIdx+1}${colSpan>1 ? ' t/m ' + (cIdx+colSpan) : ''}</p>`;
+    if(colSpan < C) tvHtml += line2('Breedte in cm', `<input type="number" min="20" step="1" value="${Math.round(spanWidthCm)}" data-tvwidthcm="1" style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`
+      + `<span class="cs-hint">de kastdelen erboven en eronder worden even breed, de rest verdeelt zich over de andere kastdelen</span>`);
     if(colSpan < C){
       const midStart = (C - colSpan) / 2;
       const canMid = Number.isInteger(midStart);
@@ -3161,6 +3175,12 @@ function renderCellEditorInner(backdrop, box){
   box.innerHTML = html;
 
   box.querySelector('#csMore').addEventListener('toggle', e=>{ cellSettingsMoreOpen = e.currentTarget.open; });
+  const tvW = box.querySelector('[data-tvwidthcm]');
+  if(tvW){
+    const apply = () => { const v = parseNum(tvW.value); if(v > 0){ setTvVakWidthCm(cIdx, colSpan, v); render(); } };
+    tvW.addEventListener('change', apply);
+    tvW.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); apply(); } });
+  }
 
   // hoogte / diepte van dit vak
   const rowHeightExtra = box.querySelector('#rowHeightExtra');
@@ -4153,8 +4173,9 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         continue;
       }
       const isMerged3D = mySpanInfo && mySpanInfo.endIdx > mySpanInfo.startIdx;
-      let spanWidth = isMerged3D ? widthOfColSpan(mySpanInfo.startIdx, mySpanInfo.endIdx) : (anyMergeExistsInWall ? equalColWidth3D : col.width);
-      let xAccForThisCell = isMerged3D ? equalXPositions[mySpanInfo.startIdx] : (anyMergeExistsInWall ? equalXPositions[ci] : colStartX[ci]);
+      let spanWidth = isMerged3D ? widthOfColSpan(mySpanInfo.startIdx, mySpanInfo.endIdx) : col.width;
+      // bij een gedraaide wand (hoek) is de kolomvolgorde omgekeerd: een samengevoegd vak begint dan bij de LAATSTE kolom ervan
+      let xAccForThisCell = isMerged3D ? Math.min(...Array.from({length: mySpanInfo.endIdx - mySpanInfo.startIdx + 1}, (_, k) => colStartX[mySpanInfo.startIdx + k])) : colStartX[ci];
       // vrije breedte van dit ene vak (los van de kolom): positie/breedte uit de rij-indeling
       const ovLayout3d = rowOverrideLayout(row.id);
       if(ovLayout3d && ovLayout3d[ci]){
