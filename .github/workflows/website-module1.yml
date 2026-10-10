@@ -1,0 +1,77 @@
+# Zet de configurator automatisch op module1.nl (webhosting bij Mijndomein) zodra er een nieuwe versie op main komt.
+#
+# Eenmalig instellen in GitHub: Settings -> Secrets and variables -> Actions -> New repository secret
+#   FTP_SERVER      het FTP-adres van je hosting (bijv. ftp.module1.nl)
+#   FTP_USERNAME    je FTP-gebruikersnaam
+#   FTP_PASSWORD    je FTP-wachtwoord
+#   FTP_PATH        waar het bestand moet komen, vanaf de start-map van je FTP-account,
+#                   bijv. public_html/index.html  (of www/index.html, of alleen index.html)
+#
+# Bij elke upload wordt eerst het bestand dat op dat moment online staat als reservekopie bewaard
+# (onder "Artifacts" bij de run in het tabblad Actions), zodat je altijd terug kunt.
+name: Website module1.nl bijwerken
+
+on:
+  push:
+    branches: [main]
+    paths: [module1-configurator.html]
+  workflow_dispatch:
+
+concurrency:
+  group: website-module1
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Controleren of de FTP-gegevens zijn ingevuld
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PATH: ${{ secrets.FTP_PATH }}
+        run: |
+          missing=""
+          for v in FTP_SERVER FTP_USERNAME FTP_PASSWORD FTP_PATH; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Deze gegevens ontbreken nog in Settings -> Secrets and variables -> Actions:$missing"
+            exit 1
+          fi
+
+      - name: Reservekopie maken van de huidige website
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PATH: ${{ secrets.FTP_PATH }}
+        run: |
+          mkdir -p reservekopie
+          # bestaat het bestand nog niet, dan is er niets te bewaren
+          curl --silent --show-error --ssl --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            "ftp://$FTP_SERVER/${FTP_PATH#/}" -o "reservekopie/$(basename "$FTP_PATH")" \
+            || echo "Geen bestaand bestand gevonden om te bewaren."
+
+      - name: Reservekopie bewaren
+        uses: actions/upload-artifact@v4
+        with:
+          name: reservekopie-website
+          path: reservekopie/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Nieuwe versie uploaden
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PATH: ${{ secrets.FTP_PATH }}
+        run: |
+          curl --silent --show-error --fail --ssl --ftp-create-dirs \
+            --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            -T module1-configurator.html "ftp://$FTP_SERVER/${FTP_PATH#/}"
+          echo "Klaar: module1-configurator.html staat nu op $FTP_PATH"
