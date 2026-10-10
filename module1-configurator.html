@@ -3128,6 +3128,8 @@ function renderCellEditorInner(backdrop, box){
     tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Over kastdeel ${cIdx+1}${colSpan>1 ? ' t/m ' + (cIdx+colSpan) : ''}</p>`;
     if(colSpan < C) tvHtml += line2('Breedte in cm', `<input type="number" min="20" step="1" value="${Math.round(spanWidthCm)}" data-tvwidthcm="1" style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`
       + `<span class="cs-hint">de kastdelen erboven en eronder worden even breed, de rest verdeelt zich over de andere kastdelen</span>`);
+    tvHtml += line2('Hoogte in cm', `<input type="number" min="20" step="1" value="${Math.round(effHeightForThisCell)}" data-tvheightcm="1" style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`
+      + `<span class="cs-hint">${rows.length > 1 ? 'de hele verdieping wordt zo hoog, de andere verdiepingen verdelen de rest van de hoogte' : 'dit is de hoogte van de kast; pas die aan bij stap 2'}</span>`);
     if(colSpan < C){
       const midStart = (C - colSpan) / 2;
       const canMid = Number.isInteger(midStart);
@@ -3175,6 +3177,21 @@ function renderCellEditorInner(backdrop, box){
   box.innerHTML = html;
 
   box.querySelector('#csMore').addEventListener('toggle', e=>{ cellSettingsMoreOpen = e.currentTarget.open; });
+  const tvH = box.querySelector('[data-tvheightcm]');
+  if(tvH){
+    if(rows.length < 2) tvH.disabled = true;
+    const applyH = () => {
+      const v = parseNum(tvH.value);
+      if(!(v > 0) || rows.length < 2) return;
+      cols.forEach(c => clearRowOverride(c.id, row.id)); // eigen vakhoogtes op deze verdieping vervallen
+      row.height = Math.max(20, v); row.fixed = true;
+      rowFixOrder = rowFixOrder.filter(id => id !== row.id); rowFixOrder.push(row.id);
+      recomputeRowFlex();
+      render();
+    };
+    tvH.addEventListener('change', applyH);
+    tvH.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); applyH(); } });
+  }
   const tvW = box.querySelector('[data-tvwidthcm]');
   if(tvW){
     const apply = () => { const v = parseNum(tvW.value); if(v > 0){ setTvVakWidthCm(cIdx, colSpan, v); render(); } };
