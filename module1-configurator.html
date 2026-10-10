@@ -394,6 +394,7 @@
   #configuratorEmbed .cs-group .cs-label {width:auto;text-transform:none;letter-spacing:0;font-size:12px;}
   #configuratorEmbed .cs-opts {display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
   #configuratorEmbed .cs-opts .type-btn.sm {min-width:34px;justify-content:center;}
+  #configuratorEmbed .type-btn:disabled {opacity:.35;cursor:default;transform:none;}
   #configuratorEmbed .cs-more {border-top:1px solid var(--line);margin:0;padding-top:12px;}
   #configuratorEmbed .cs-more summary {font-size:12px;color:var(--ink);font-weight:700;}
   #configuratorEmbed .cs-more .extra-row {display:grid;grid-template-columns:150px auto auto;justify-content:start;align-items:center;gap:6px 10px;}
@@ -2195,6 +2196,21 @@ function setTvRow(rowId, on){
   selectedCell = null;
   render();
 }
+// Zet het tv-vak (stap 4) op verdieping rowId van kastdeel `start` over `width` kastdelen. Het oude tv-vak op die
+// verdieping wordt weer een open vak; de vakken van die verdieping die het tv-vak niet raakt blijven zoals ze waren.
+function placeTvVak(rowId, start, width){
+  const C = cols.length;
+  width = Math.max(1, Math.min(width, C));
+  start = Math.max(0, Math.min(start, C - width));
+  const tvCols = cols.filter(c => getCell(rowId, c.id).type === 'tv').map(c => c.id);
+  // alle samenvoegingen op deze verdieping opheffen, het oude tv-vak leegmaken
+  cols.forEach(c => { const cell = getCell(rowId, c.id); cell.widthSpan = 1; cell.widthCm = null; if(tvCols.includes(c.id)) cell.type = 'open'; });
+  const tv = getCell(rowId, cols[start].id);
+  tv.type = 'tv'; tv.door = false; tv.doorSpan = 1; tv.widthSpan = width; tv.widthSpanDir = 'rechts';
+  const row = rows.find(r => r.id === rowId);
+  if(row){ row.parts = null; row.partsSig = null; }
+  selectedCell = { rowId, colId: cols[start].id };
+}
 function setTvWidth(rowId, v){
   const row = rows.find(r=>r.id===rowId);
   if(!row || !row.tv || !(v > 0)) return;
@@ -3094,13 +3110,20 @@ function renderCellEditorInner(backdrop, box){
   if(cell.type==='kledinglift') inhoud += line2('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
   html += group('Inhoud', inhoud);
   if(cell.type === 'tv'){
-    const maxSpan = Math.min(4, cols.length - cIdx);
-    if(maxSpan > 1){
-      html += group('TV-vak', line2('Breedte van het tv-vak', btns('tvspan', nums(maxSpan).map(([v]) => [v, v===1 ? '1 kastdeel' : v + ' kastdelen']), colSpan)
-        + `<span class="cs-hint">${Math.round(spanWidthCm)} cm breed — het vak wordt naar rechts breder</span>`));
-    } else {
-      html += group('TV-vak', `<p class="cs-hint" style="margin:0;">Dit tv-vak is ${Math.round(spanWidthCm)} cm breed. Wil je het breder, kies dan een vak verder naar links als tv-vak.</p>`);
+    const C = cols.length, maxW = Math.min(4, C);
+    let tvHtml = '';
+    if(maxW > 1) tvHtml += line2('Breedte van het tv-vak', btns('tvspan', nums(maxW).map(([v]) => [v, v===1 ? '1 kastdeel' : v + ' kastdelen']), colSpan));
+    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">${Math.round(spanWidthCm)} cm breed, over kastdeel ${cIdx+1}${colSpan>1 ? ' t/m ' + (cIdx+colSpan) : ''}</p>`;
+    if(colSpan < C){
+      const midStart = (C - colSpan) / 2;
+      const canMid = Number.isInteger(midStart);
+      tvHtml += line2('Plek van het tv-vak',
+        `<button type="button" class="type-btn sm" data-act="tvmove" data-val="-1" ${cIdx===0?'disabled':''}>← Naar links</button>`
+        + (canMid ? `<button type="button" class="type-btn sm ${cIdx===midStart?'active':''}" data-act="tvmove" data-val="mid">In het midden</button>` : '')
+        + `<button type="button" class="type-btn sm" data-act="tvmove" data-val="1" ${cIdx+colSpan>=C?'disabled':''}>Naar rechts →</button>`);
+      if(!canMid) tvHtml += `<p class="cs-hint" style="margin:6px 0 0;">Precies in het midden kan bij deze breedte niet: maak het tv-vak 1 kastdeel breder of smaller.</p>`;
     }
+    html += group('TV-vak', tvHtml);
   }
   let deur = cell.type === 'tv' ? '' : line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
   if(hasDoor){
@@ -3267,14 +3290,15 @@ function renderCellEditorInner(backdrop, box){
       }
       else if(act==='unmerge') clearWidthSpan(row.id, col.id);
       else if(act==='tvspan'){
-        const n = Math.max(1, Math.min(Number(val), cols.length - cIdx));
-        c.widthSpan = n; c.widthSpanDir = 'rechts'; c.widthCm = null;
-        for(let k=1; k<n; k++){ const c2 = getCell(row.id, cols[cIdx+k].id); c2.widthSpan = 1; c2.widthCm = null; }
-        // een vak dat direct na het tv-vak begint, mag niet meer over het tv-vak heen liggen
-        const after = cIdx + n;
-        if(after < cols.length){ const ca = getCell(row.id, cols[after].id); ca.widthSpan = Math.max(1, Math.min(Number(ca.widthSpan)||1, cols.length - after)); }
+        const n = Number(val);
+        placeTvVak(row.id, Math.min(cIdx, cols.length - n), n); // past het niet meer naar rechts, dan schuift het tv-vak naar links
       }
-      if(act==='mergeRight' || act==='mergeLeft' || act==='unmerge' || act==='tvspan'){ row.parts = null; row.partsSig = null; }
+      else if(act==='tvmove'){
+        const w = colSpan;
+        const start = val === 'mid' ? (cols.length - w) / 2 : cIdx + Number(val);
+        placeTvVak(row.id, start, w);
+      }
+      if(act==='mergeRight' || act==='mergeLeft' || act==='unmerge'){ row.parts = null; row.partsSig = null; }
       render();
     });
   });
