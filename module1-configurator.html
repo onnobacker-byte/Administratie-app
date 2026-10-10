@@ -941,6 +941,8 @@
           <div class="type-row" id="wallTabsRow3" style="display:none;margin-bottom:16px;"></div>
 
           <p style="font-size:14px;color:var(--graphite);margin-bottom:18px;max-width:560px;">Je kast is opgebouwd uit <strong>verdiepingen</strong> (op elkaar gestapeld, van onder naar boven) en <strong>kastdelen</strong> (naast elkaar, van links naar rechts). Waar die elkaar kruisen ontstaat een vak. Wat er in elk vak komt, kies je in de volgende stap.<br>Per verdieping kun je ook kiezen hoeveel kastdelen er naast elkaar komen, of een tv-vak in het midden maken.</p>
+          <p class="tv-note" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;max-width:560px;margin-bottom:18px;">Een tv-vak op een andere plek? Dat kies je in stap 4: klik op een vak en kies TV-vak.
+            <button type="button" class="type-btn sm" id="goTvStep4">Naar stap 4 →</button></p>
 
           <div class="panel">
             <h2 class="section-title">Verdiepingen (op elkaar, van onder naar boven)</h2>
@@ -6236,6 +6238,7 @@ document.getElementById('toggleRoomBtn').addEventListener('click', e=>{
 });
 document.getElementById('toggleWalkModeBtn').addEventListener('click', ()=>{ setWalkMode(!walkMode); });
 window.addEventListener('keydown', e=>{ if(walkMode && e.key==='Escape') setWalkMode(false); });
+document.getElementById('goTvStep4').addEventListener('click', ()=> goToWizardStep(4));
 document.querySelectorAll('.wizard-nav [data-goto]').forEach(btn=>{
   btn.addEventListener('click', ()=> goToWizardStep(Number(btn.dataset.goto)));
 });
