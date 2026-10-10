@@ -3170,12 +3170,14 @@ function renderCellEditorInner(backdrop, box){
   if(EXTRA_OPTIES.length){
     html += group('Extra', `<div class="cs-opts">${EXTRA_OPTIES.map(o => `<button type="button" class="type-btn sm ${cell.extras&&cell.extras[o.id]?'active':''}" data-act="extra" data-extraid="${o.id}">${o.naam}</button>`).join('')}</div>`);
   }
+  // diepte van dit vak: altijd zichtbaar (werd in het ingeklapte maten-blok niet gevonden)
+  const depthOverridden = col.depthOverrides && col.depthOverrides[row.id] !== undefined;
+  html += group('Diepte', `<div class="extra-row" id="rowDepthExtra"></div>`
+    + (depthOverridden ? line2('Dit vak is minder diep. Wat moet gelijk blijven met de rest?', btns('depthalign', [['voor','De voorkant'],['achter','De achterkant (tegen de muur)']], cell.depthAlign === 'achter' ? 'achter' : 'voor')) : ''));
   html += `<details class="cs-more" id="csMore" ${cellSettingsMoreOpen?'open':''}>
-      <summary>Maten van dit vak aanpassen</summary>
+      <summary>Hoogte en breedte van dit vak aanpassen</summary>
       <div class="cs-more-body">
         <div class="extra-row" id="rowHeightExtra"></div>
-        <div class="extra-row" id="rowDepthExtra"></div>
-        ${line2('Ondieper vak', btns('depthalign', [['voor','Voorkant gelijk'],['achter','Achterkant gelijk']], cell.depthAlign === 'achter' ? 'achter' : 'voor'))}
         ${freeWidthPossible ? '<div class="extra-row" id="freeWidthExtra"></div>' : ''}
         <div class="cs-row" id="csMergeRow">
           ${canMergeLeft ? '<button type="button" class="type-btn sm" data-act="mergeLeft">+ vak links erbij</button>' : ''}
@@ -3209,9 +3211,9 @@ function renderCellEditorInner(backdrop, box){
   const depthAlignNow = cell.depthAlign === 'achter' ? 'achter' : 'voor';
   const isDepthOverridden = col.depthOverrides && col.depthOverrides[row.id]!==undefined;
   rowDepthExtra.innerHTML = `
-    <label>Diepte (cm)</label>
-    <input type="number" min="5" step="0.5" value="${Math.round(effDepthForThisCell*10)/10}" data-rowdepth="1">
-    ${isDepthOverridden ? '<button class="mini-remove" id="resetRowDepthBtn">terugzetten</button>' : ''}
+    <label>Diepte van dit vak</label>
+    <input type="number" min="5" step="0.5" value="${Math.round(effDepthForThisCell*10)/10}" data-rowdepth="1"> cm
+    ${isDepthOverridden ? '<button class="mini-remove" id="resetRowDepthBtn">zelfde diepte als de rest</button>' : ''}
   `;
   rowDepthExtra.querySelector('[data-rowdepth]').addEventListener('change', e=>{
     const val = Math.max(5, parseNum(e.target.value)||effDepthForThisCell);
@@ -3352,7 +3354,7 @@ function renderSummary(){
       const doorInfo = coveredByDoor[col.id][ri];
       const wDisp = Math.round(col.width*10)/10;
       const hDisp = Math.round(row.height*10)/10;
-      const dDisp = Math.round(col.depth*10)/10;
+      const dDisp = Math.round(getEffectiveDepth(col, row.id)*10)/10;
       count++;
       const r = document.createElement('div');
       r.className = 'summary-row';
@@ -7103,7 +7105,7 @@ if(restoreDesign()){
     { k:['hoe werkt','werkt het','configurator','beginnen','starten','begin','uitleg','stappen'], a:()=> 'Je stelt je kast in een paar stappen samen: soort kast, afmetingen, indeling, wat er in de vakken komt, kleur, verlichting, inmeten en montage, en je gegevens. Je ziet je kast meteen in 3D en de prijs rekent mee. Zal ik je naar het begin brengen?', step:1 },
     { k:['deze stap','wat moet ik','waar ben ik','help','hulp','snap','begrijp','hier','nu doen'], a:()=> STEP_HELP[wizardStep] || STEP_HELP[1] },
     { k:['soort','soorten','hoekopstelling','hoek','keuken','kastenwand','type','kookeiland'], a:()=> 'Je kunt een kastenwand tussen twee muren maken, een hoekopstelling met twee wanden haaks op elkaar, of een keuken. Bij een keuken kies je een rechte keuken, een L-opstelling, een U-opstelling of een keuken met kookeiland.', step:1 },
-    { k:['maat','maten','breedte','breed','hoogte','hoog','diepte','diep','afmeting','afmetingen','groot','cm','centimeter','meter'], a:()=> 'Je bepaalt zelf de maten. De breedte kan tot 10 meter, de hoogte tot 4 meter en de diepte tot 1 meter. De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 centimeter.', step:2 },
+    { k:['maat','maten','breedte','breed','hoogte','hoog','diepte','diep','afmeting','afmetingen','groot','cm','centimeter','meter'], a:()=> 'Je bepaalt zelf de maten. De breedte kan tot 10 meter, de hoogte tot 4 meter en de diepte tot 1 meter. De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 centimeter. Wil je één vak minder diep, dan klik je in stap 4 op dat vak en vul je bij Diepte een andere maat in.', step:2 },
     { k:['tv','televisie','televisiemeubel','tv meubel','tv kast'], a:()=> 'Ja, dat kan, en op elke plek in je kast. In stap 4 klik je op het vak waar de tv moet komen en kies je TV-vak. Daarna kies je hoe breed het wordt: 1, 2 of meer kastdelen. Wil je de tv precies in het midden, dan kan dat ook in stap 3 met TV-vak in het midden.', step:4 },
     { k:['verdieping','verdiepingen','kastdeel','kastdelen','indeling','vakken','vak','rij','rijen','kolom','kolommen'], a:()=> 'Je kast bestaat uit verdiepingen, op elkaar gestapeld, en kastdelen, naast elkaar. Waar die elkaar kruisen ontstaat een vak. In stap 3 kies je hoeveel verdiepingen je wilt en hoeveel kastdelen er per verdieping naast elkaar komen.', step:3 },
     { k:['plank','planken','lade','laden','roede','kledingstang','hangen','kleding','kledinglift','lift','binnenkant','inhoud','opdeling'], a:()=> 'Per vak kies je wat erin komt: open, planken, laden, een kledingroede, een plank met roede, een roede met laden, een kledinglift of een tv-vak. Dat doe je in stap 4: klik op een vak in het voorbeeld en kies.', step:4 },
