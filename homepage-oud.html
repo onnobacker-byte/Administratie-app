@@ -650,6 +650,9 @@
   toggle.addEventListener('click', () => links.classList.toggle('open'));
   links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => links.classList.remove('open')));
   // terugkomen via de terugknop van de browser laadt de pagina opnieuw, zodat je niet de oude kopie ziet
+  // terugkomen via de terugknop: de browser kan dan een oude kopie tonen, dus opnieuw laden
+  const navType = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+  if ((navType && navType.type === 'back_forward') || (window.performance && performance.navigation && performance.navigation.type === 2)) location.reload();
   window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 </script>
 
