@@ -1292,6 +1292,11 @@
   const links = document.getElementById('navLinks');
   toggle.addEventListener('click', () => links.classList.toggle('open'));
   links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => links.classList.remove('open')));
+  // met #configurator in de link: direct naar het configuratorgedeelte scrollen, ook nadat de pagina geladen is
+  function scrollNaarConfigurator(){
+    if(location.hash === '#configurator'){ const c = document.getElementById('configurator'); if(c) c.scrollIntoView({block:'start'}); }
+  }
+  window.addEventListener('load', () => setTimeout(scrollNaarConfigurator, 50));
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
