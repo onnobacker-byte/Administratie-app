@@ -333,7 +333,7 @@
     font-family:Arial,Helvetica,sans-serif;font-size:12px;padding:9px 18px;border-radius:var(--radius-pill);
     border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;
   }#configuratorEmbed .add-btn.secondary {background:transparent;color:var(--ink);}#configuratorEmbed .stage {
-    background:var(--ink);border-radius:var(--radius-card);padding:24px;margin-bottom:8px;
+    background:#d8d1c1;border-radius:var(--radius-card);padding:24px;margin-bottom:8px;
     display:flex;align-items:center;justify-content:center;overflow-x:auto;min-height:280px;
   }#configuratorEmbed #stage2d {display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}#configuratorEmbed #stage2d > .stage {flex:1;min-width:340px;}#configuratorEmbed #otherWalls2d {display:flex;gap:16px;flex-wrap:wrap;flex:1;min-width:280px;}#configuratorEmbed .other-wall-stage {flex:1;min-width:280px;}#configuratorEmbed .other-wall-label {font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-bottom:8px;text-align:center;}#configuratorEmbed #otherWalls2d .stage {min-height:auto;padding:16px;flex-direction:column;}#configuratorEmbed #canvas2d {display:block;cursor:pointer;}#configuratorEmbed #canvas3d,#configuratorEmbed #canvasPlanTop {touch-action:none;}#configuratorEmbed .cell-editor {margin-top:8px;}#configuratorEmbed .cell-editor .none {color:var(--graphite);font-size:13px;font-family:Arial,Helvetica,sans-serif;}#configuratorEmbed .type-row {display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}#configuratorEmbed .type-btn {
     font-family:Arial,Helvetica,sans-serif;font-size:11px;padding:9px 16px;border-radius:var(--radius-pill);border:1.5px solid var(--line);
@@ -3511,7 +3511,7 @@ let lastWalkFrameTime = null;
 function init3d(){
   const canvas = document.getElementById('canvas3d');
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x151513);
+  scene.background = new THREE.Color(0xd8d1c1); // warm beige achtergrond van het 3D-voorbeeld
   camera = new THREE.PerspectiveCamera(CAMERA_FOV, canvas.clientWidth/canvas3dTargetHeight(), 1, 8000);
   renderer = new THREE.WebGLRenderer({canvas, antialias:true});
   renderer.setSize(canvas.clientWidth, canvas3dTargetHeight(), false);
@@ -4182,7 +4182,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
   const totalWidthCm = cols.reduce((s,c)=>s+c.width,0);
   const totalHeightCm = rows.reduce((s,r)=>s+r.height,0);
   const maxDepthCm = Math.max(...cols.map(c=>c.depth));
-  const gap = 0.4; // subtiele naad tussen modules i.p.v. contourlijnen (voorkomt z-fighting)
+  const gap = 0; // kasten sluiten precies op elkaar aan
 
   // werkblad reserveert een echte kier tussen de rijen i.p.v. eroverheen te vallen
   const worktopAfterRi = worktop.enabled ? Math.min(worktop.afterRowIndex, rows.length-1) : -1;
