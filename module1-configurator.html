@@ -856,6 +856,7 @@
           <div class="type-row" id="kookeilandSidesRow" style="display:none;margin-bottom:16px;"></div>
           <div class="panel">
             <h2 class="section-title" id="mainDimsTitle">Totale afmetingen</h2>
+            <div class="cs-group-title" id="isl1Head" style="display:none;margin:0 0 8px;font-weight:700;color:var(--oak-dark);">Kant 1</div>
             <div class="stepper-row">
               <span class="lbl">Breedte</span>
               <div class="stepper">
@@ -880,6 +881,12 @@
                 <button type="button" class="stepper-btn" id="depthPlusBtn" aria-label="Dieper">+</button>
               </div>
             </div>
+            <div id="islandSide2Block" style="display:none;margin-top:18px;border-top:1px solid var(--line);padding-top:14px;">
+              <div class="cs-group-title" id="islandSide2Title" style="margin:0 0 8px;font-weight:700;color:var(--oak-dark);">Kant 2</div>
+            <div class="stepper-row"><span class="lbl">Breedte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="w" data-delta="-10" aria-label="Minder breed">−</button><div class="stepper-value"><input type="number" min="20" max="1000" id="isl2Width"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="w" data-delta="10" aria-label="Breder">+</button></div></div>
+            <div class="stepper-row"><span class="lbl">Hoogte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="h" data-delta="-10" aria-label="Lager">−</button><div class="stepper-value"><input type="number" min="20" max="400" id="isl2Height"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="h" data-delta="10" aria-label="Hoger">+</button></div></div>
+            <div class="stepper-row"><span class="lbl">Diepte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="d" data-delta="-5" aria-label="Minder diep">−</button><div class="stepper-value"><input type="number" min="20" max="100" id="isl2Depth"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="d" data-delta="5" aria-label="Dieper">+</button></div></div>
+            </div>
             <div style="margin-top:14px;">
               <span class="lbl" style="display:block;margin-bottom:8px;">Speling (gaat af van de totale maat — bijv. bij scheve wanden/plafond)</span>
               <div class="row-item"><span class="lbl" style="width:100px;">Links</span><input type="number" min="0" max="20" step="0.5" id="marginLeftInput"> cm</div>
@@ -899,12 +906,6 @@
             <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:4px;">De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 cm, de hoogte over de verdiepingen. De diepte geldt voor de hele kast. In stap 3 kun je verdiepingen en kastdelen nog los aanpassen.</p>
           </div>
 
-          <div class="panel" id="islandSide2Panel" style="display:none;">
-            <h2 class="section-title" id="islandSide2Title">Kookeiland — kant 2: afmetingen</h2>
-            <div class="stepper-row"><span class="lbl">Breedte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="w" data-delta="-10" aria-label="Minder breed">−</button><div class="stepper-value"><input type="number" min="20" max="1000" id="isl2Width"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="w" data-delta="10" aria-label="Breder">+</button></div></div>
-            <div class="stepper-row"><span class="lbl">Hoogte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="h" data-delta="-10" aria-label="Lager">−</button><div class="stepper-value"><input type="number" min="20" max="400" id="isl2Height"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="h" data-delta="10" aria-label="Hoger">+</button></div></div>
-            <div class="stepper-row"><span class="lbl">Diepte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="d" data-delta="-5" aria-label="Minder diep">−</button><div class="stepper-value"><input type="number" min="20" max="100" id="isl2Depth"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="d" data-delta="5" aria-label="Dieper">+</button></div></div>
-          </div>
           <div class="panel" id="worktopPanel" style="display:none;">
             <h2 class="section-title">Werkblad</h2>
             <div class="type-row" id="worktopRow">
@@ -5941,14 +5942,16 @@ function setIslandOther(kind, v){
   });
 }
 function updateIslandDimsUI(){
-  const pan = document.getElementById('islandSide2Panel'), mt = document.getElementById('mainDimsTitle');
-  if(!pan || !mt) return;
+  const blk = document.getElementById('islandSide2Block'), mt = document.getElementById('mainDimsTitle'), h1 = document.getElementById('isl1Head');
+  if(!blk || !mt) return;
   const on = islandTwoSided() && activeWallIndex >= 1;
-  pan.style.display = on ? '' : 'none';
+  blk.style.display = on ? '' : 'none';
+  h1.style.display = on ? '' : 'none';
   if(selectedLayout==='kookeiland' && activeWallIndex===0) mt.textContent = 'Hoofdopstelling: afmetingen';
   else if(on){
-    mt.textContent = 'Kookeiland — kant ' + activeWallIndex + ': afmetingen';
-    document.getElementById('islandSide2Title').textContent = 'Kookeiland — kant ' + islandOtherIdx() + ': afmetingen';
+    mt.textContent = 'Kookeiland: afmetingen van beide kanten';
+    h1.textContent = 'Kant ' + activeWallIndex;
+    document.getElementById('islandSide2Title').textContent = 'Kant ' + islandOtherIdx();
     const o = walls[islandOtherIdx()];
     const set = (id, v) => { const el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
     set('isl2Width', Math.round(o.lockedTotalWidth*10)/10);
