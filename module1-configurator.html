@@ -3977,6 +3977,26 @@ function computeWallTransforms(nominalWidths, depths){
 
 // zorgt dat één wand volledig doorloopt tot in de hoek (binnenhoek), en de andere
 // wand(en) terugwijken met precies de diepte van die doorlopende kast, zodat er geen overlap ontstaat
+// opvulstrook in de hoek: bij een hoekopstelling met deuren moet tussen de twee kasten van de hoek
+// een strip van deurdikte (18 mm) zitten, anders botsen de deuren van de ene kast tegen de andere
+const CORNER_FILLER_CM = 1.8;
+let pricingWallIdx = null, pricingLiveCells = null; // gezet tijdens het doorlopen van alle wanden bij prijs/offerte
+function cornerFillerCm(){
+  if(!(walls.length===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling'))) return 0;
+  const liveCs = () => pricingLiveCells || cells;
+  const hasDoor = (cs) => Object.values(cs||{}).some(c => c && c.door);
+  return walls.some((w,i) => hasDoor(i===activeWallIndex ? liveCs() : w.cells)) ? CORNER_FILLER_CM : 0;
+}
+function isCornerRetreatWall(idx){
+  return cornerFillerCm() > 0 && idx !== ((masterWallIndex===1) ? 1 : 0);
+}
+function cornerFillerColor(){
+  for(let i=0;i<walls.length;i++){
+    const cs = (i===activeWallIndex) ? (pricingLiveCells || cells) : walls[i].cells;
+    for(const k in (cs||{})){ const c=cs[k]; if(c && c.door) return matOf(c.doorMaterial||c.material).color; }
+  }
+  return 0xdddddd;
+}
 function updateCornerMargins(){
   if(walls.length < 2) return;
   walls[activeWallIndex] = captureWallState();
@@ -4013,7 +4033,8 @@ function updateCornerMargins(){
     // plattegrondaanzicht opent.
     // Let op: dO (de diepte van de ANDERE wand) moet ook in de key zitten — die diepte bepaalt de
     // breedte van de hoekkast-kolom op de doorlopende wand (zie recomputeFillers).
-    const cornerKey = mIdx + '|' + dM.toFixed(2) + '|' + dO.toFixed(2) + '|' + selectedLayout;
+    const FILL = cornerFillerCm();
+    const cornerKey = mIdx + '|' + dM.toFixed(2) + '|' + dO.toFixed(2) + '|' + selectedLayout + '|' + FILL;
     if(cornerKey !== lastCornerKey){
       lastCornerKey = cornerKey;
 
@@ -4032,11 +4053,11 @@ function updateCornerMargins(){
       const mOwnSpan = walls[mIdx].lockedTotalWidth;
       const oOwnSpan = walls[oIdx].lockedTotalWidth - walls[oIdx].marginLeftCm - walls[oIdx].marginRightCm;
       applyWallState(walls[mIdx]); lockedTotalWidth = mOwnSpan; walls[mIdx] = captureWallState();
-      applyWallState(walls[oIdx]); lockedTotalWidth = oOwnSpan + dM; walls[oIdx] = captureWallState();
+      applyWallState(walls[oIdx]); lockedTotalWidth = oOwnSpan + dM + FILL; walls[oIdx] = captureWallState();
 
       setMargin(mIdx,'left', 0);
       setMargin(mIdx,'right', 0);
-      setMargin(oIdx, cutSide, dM);
+      setMargin(oIdx, cutSide, dM + FILL);
       setMargin(oIdx, cutSide==='left' ? 'right' : 'left', 0);
     }
   } else if(selectedLayout==='u-opstelling' && walls.length>=3){
@@ -4174,6 +4195,18 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
       Object.assign(islandSpec, { width:worktopWidth, thickness:worktop.thicknessCm, y:worktopY, x:cabinetCenterX + (ohRight-ohLeft)/2, maxDepthCm, ohFront, color:worktopMatColor });
     } else {
       group.add(worktopMesh);
+    }
+  }
+
+  { // opvulstrook in de hoek (alleen op de wijkende wand): vult de laatste 1,8 cm van de hoekmarge
+    const F = cornerFillerCm();
+    if(F>0 && isCornerLayout2 && wallIdxForHitbox !== ((masterWallIndex===1)?1:0)){
+      const fillerOnRight = (wallIdxForHitbox === primaryIdxForCorner);
+      const fx = fillerOnRight ? cabinetCenterX + totalWidthCm/2 + endRightCm() + F/2 : cabinetCenterX - totalWidthCm/2 - endLeftCm() - F/2;
+      const fh = totalStackHeightCm;
+      const fm = new THREE.Mesh(new THREE.BoxGeometry(F, fh, maxDepthCm), new THREE.MeshStandardMaterial({color:cornerFillerColor(), roughness:0.6}));
+      fm.position.set(fx, 0, 0);
+      group.add(fm);
     }
   }
 
@@ -5373,6 +5406,14 @@ function wallPriceItems(){
     edgebandCm += e;
     extras.push({ key, amount: (panelH*maxD/10000) * (materialPrices[endPanelMatId()] || 0) * marginMult + e * ebRate });
   });
+  { const F = cornerFillerCm(); const wi = (pricingWallIdx!==null) ? pricingWallIdx : activeWallIndex;
+    if(F > 0 && isCornerRetreatWall(wi) && cols.length){
+      const fh = rows.reduce((s,r)=>s+r.height,0), fm = (cells[Object.keys(cells).find(k=>cells[k] && cells[k].door)||''] || {});
+      const mat = fm.doorMaterial || fm.material || defMatId();
+      const e = fh + maxD; edgebandCm += e;
+      extras.push({ key:'hoekstrip', amount: (fh*maxD/10000) * (materialPrices[mat] || 0) * marginMult + e * ebRate });
+    }
+  }
   if(plintHeightMm > 0) extras.push({ key:'plint', amount: (totalW/100) * (otherPrices.pricePlint || 0) * partsMargin });
   if(worktop.enabled && cols.length){
     const wtW = totalW + (worktop.overhangLeftCm||0) + (worktop.overhangRightCm||0) + endLeftCm() + endRightCm();
@@ -5398,11 +5439,14 @@ function calculatePrice(){
     // meerdere wanden (hoek/U/kookeiland): elke wand meetellen - de actieve wand met de LIVE objecten (refWallState),
     // zodat er na afloop precies dezelfde objecten teruggezet worden
     const ref = refWallState();
+    pricingLiveCells = ref.cells;
     walls.forEach((w, i) => {
       applyWallState(i === activeWallIndex ? ref : w);
+      pricingWallIdx = i;
       const r = wallPriceParts();
       total += r.total; edgebandCm += r.edgebandCm;
     });
+    pricingWallIdx = null; pricingLiveCells = null;
     applyWallState(ref);
   } else {
     const r = wallPriceParts();
@@ -6463,6 +6507,9 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
       // kant 2 staat gedraaid: zijn links is de wereld-rechterkant
       amount: extraOf(items, key) + (islandBoth && itemsOther ? extraOf(itemsOther, keyOther) : 0) });
   });
+  if(extraOf(items, 'hoekstrip') > 0){
+    d.extra.push({ title: 'Opvulstrook in de hoek', size: quoteNum(CORNER_FILLER_CM) + ' cm dik (deurdikte) x ' + quoteNum(rows.reduce((s,r)=>s+r.height,0)) + ' cm hoog x ' + quoteNum(partDepth) + ' cm diep', material: 'kleur van de deuren', details: ['Zorgt dat de deuren in de hoek kunnen openen'], amount: extraOf(items, 'hoekstrip') });
+  }
   d.subtotal = d.modules.reduce((s,m)=>s+m.price, 0) + d.extra.reduce((s,e)=>s+e.amount, 0);
   return d;
 }
@@ -6473,7 +6520,9 @@ function buildQuoteData(){
   if(walls.length > 1){
     const labels = wallLabels();
     const ref = refWallState(); // de actieve wand met de LIVE objecten, zodat er na afloop precies dezelfde objecten teruggezet worden
-    const allItems = walls.map((w, i) => { applyWallState(i === activeWallIndex ? ref : w); return wallPriceItems(); });
+    pricingLiveCells = ref.cells;
+    const allItems = walls.map((w, i) => { applyWallState(i === activeWallIndex ? ref : w); pricingWallIdx = i; return wallPriceItems(); });
+    pricingWallIdx = null; pricingLiveCells = null;
     walls.forEach((w, i) => {
       applyWallState(i === activeWallIndex ? ref : w);
       // kookeiland met 2 kanten: kant 1 en 2 vormen 1 blad/paneel - kant 1 krijgt de prijs van beide
