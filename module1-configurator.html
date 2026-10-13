@@ -1334,7 +1334,8 @@ function isLightColor(hex){
 // niet van elkaar te onderscheiden waren) — gedeeld tussen het hoofd-vooraanzicht/live-voorbeeld
 // (renderCanvas2d) en het losse voorbeeld in de vak-editor (renderModulePreviewSvg), zodat beide
 // altijd hetzelfde tonen en een verbetering nooit op maar één van de twee plekken vergeten wordt.
-function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor){
+function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor, pxPerCm){
+  const seamHalf = Math.max(0.25, 0.15*(pxPerCm||2)); // halve naad: 3 mm tussen de fronten
   const NS = 'http://www.w3.org/2000/svg';
   // gewone laden: het front heeft de kleur van de buitenkant (frontColor) — ook in het 2D-vooraanzicht
   const hasFront = (frontColor !== undefined && frontColor !== null);
@@ -1361,18 +1362,18 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor
     }
   } else if(cell.type==='laden'){
     const n = Number(cell.options.drawers)||3;
-    const gap = Math.max(1.5, w*0.01);
+    const gap = seamHalf;
     for(let i=0;i<n;i++){
       const dh = h/n;
       const dy = y + dh*i;
       const front = document.createElementNS(NS,'rect');
       front.setAttribute('x', x+gap); front.setAttribute('y', dy+gap);
       front.setAttribute('width', Math.max(0,w-gap*2)); front.setAttribute('height', Math.max(0,dh-gap*2));
-      front.setAttribute('rx', Math.min(3, dh*0.08));
+      front.setAttribute('rx', 0.5);
       const innerDrawer = (drawerStyleOf(cell) === 'binnen');
       front.setAttribute('fill', innerDrawer ? 'none' : frontFill);
       front.setAttribute('stroke', innerDrawer ? strokeColor : frontStroke);
-      front.setAttribute('stroke-width', '1.6');
+      front.setAttribute('stroke-width', '1');
       if(innerDrawer) front.setAttribute('stroke-dasharray', '5 4'); // binnenladen zitten achter een deur
       front.style.pointerEvents = 'none';
       container.appendChild(front);
@@ -1452,18 +1453,18 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor
     const ladenTop = ly + h*0.22;
     const ladenH = Math.max(0, (y+h) - ladenTop);
     const n = Math.max(1, Number(cell.options.drawers)||2);
-    const gap = Math.max(1.5, w*0.01);
+    const gap = seamHalf;
     for(let i=0;i<n;i++){
       const dh = ladenH/n;
       const dy = ladenTop + dh*i;
       const front = document.createElementNS(NS,'rect');
       front.setAttribute('x', x+gap); front.setAttribute('y', dy+gap);
       front.setAttribute('width', Math.max(0,w-gap*2)); front.setAttribute('height', Math.max(0,dh-gap*2));
-      front.setAttribute('rx', Math.min(3, dh*0.08));
+      front.setAttribute('rx', 0.5);
       const innerDrawer = (drawerStyleOf(cell) === 'binnen');
       front.setAttribute('fill', innerDrawer ? 'none' : frontFill);
       front.setAttribute('stroke', innerDrawer ? strokeColor : frontStroke);
-      front.setAttribute('stroke-width', '1.6');
+      front.setAttribute('stroke-width', '1');
       if(innerDrawer) front.setAttribute('stroke-dasharray', '5 4'); // binnenladen zitten achter een deur
       front.style.pointerEvents = 'none';
       container.appendChild(front);
@@ -2599,7 +2600,7 @@ function renderCanvas2d(targetId){
       }
 
       const strokeColor = isLightColor(mat.color) ? '#15151366' : '#eeece599';
-      drawCellTypeVisual(g, cell, xAcc, rowY, cw, rh, strokeColor, matOf(cell.doorMaterial || cell.material).color);
+      drawCellTypeVisual(g, cell, xAcc, rowY, cw, rh, strokeColor, matOf(cell.doorMaterial || cell.material).color, scale);
 
       svg.appendChild(g);
     });
@@ -2622,11 +2623,12 @@ function renderCanvas2d(targetId){
         const dx = xAcc + (cw/doors)*d;
         const dw = cw/doors;
         const doorRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        doorRect.setAttribute('x', dx+3); doorRect.setAttribute('y', topY+3);
-        doorRect.setAttribute('width', dw-6); doorRect.setAttribute('height', h-6);
+        const seam2d = Math.max(0.25, 0.15*scale); // 3 mm naad tussen de deuren
+        doorRect.setAttribute('x', dx+seam2d); doorRect.setAttribute('y', topY+seam2d);
+        doorRect.setAttribute('width', Math.max(0,dw-2*seam2d)); doorRect.setAttribute('height', Math.max(0,h-2*seam2d));
         doorRect.setAttribute('fill','rgba(21,21,19,0.08)');
         doorRect.setAttribute('stroke', '#151513');
-        doorRect.setAttribute('stroke-width','2.5');
+        doorRect.setAttribute('stroke-width','1');
         doorRect.setAttribute('stroke-opacity','0.85');
         doorRect.style.pointerEvents='none';
         svg.appendChild(doorRect);
@@ -2758,14 +2760,14 @@ function renderModulePreviewSvg(container, cell, rowHeightCm, colWidthCm){
   rect.setAttribute('fill', '#'+mat.color.toString(16).padStart(6,'0'));
   svg.appendChild(rect);
   const strokeColor = isLightColor(mat.color) ? '#15151366' : '#eeece599';
-  drawCellTypeVisual(svg, cell, 0, 0, w, h, strokeColor, matOf(cell.doorMaterial || cell.material).color);
+  drawCellTypeVisual(svg, cell, 0, 0, w, h, strokeColor, matOf(cell.doorMaterial || cell.material).color, scale);
   if(cell.door){
     const doors = Number(cell.options.doors)||1;
     for(let d=0; d<doors; d++){
       const dx = (w/doors)*d, dw = w/doors;
       const doorRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      doorRect.setAttribute('x',dx+3); doorRect.setAttribute('y',3); doorRect.setAttribute('width',dw-6); doorRect.setAttribute('height',h-6);
-      doorRect.setAttribute('fill','rgba(21,21,19,0.08)'); doorRect.setAttribute('stroke','#151513'); doorRect.setAttribute('stroke-width','2.5');
+      const seamP = Math.max(0.25, 0.15*scale); doorRect.setAttribute('x',dx+seamP); doorRect.setAttribute('y',seamP); doorRect.setAttribute('width',Math.max(0,dw-2*seamP)); doorRect.setAttribute('height',Math.max(0,h-2*seamP));
+      doorRect.setAttribute('fill','rgba(21,21,19,0.08)'); doorRect.setAttribute('stroke','#151513'); doorRect.setAttribute('stroke-width','1');
       svg.appendChild(doorRect);
       let handleX;
       const inset = Math.max(4, Math.min(14, dw*0.1));
