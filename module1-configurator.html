@@ -4378,12 +4378,13 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           if(inner){
             addInnerDrawer(cellGroup, cx, dy, spanWidth - 2*t - 1, dh - 2, cellDepthEff, t, mat.color);
           } else {
-            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:frontColor, roughness:0.6}));
-            front.position.set(cx, dy, frontZ+1);
+            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-0.3, dh-0.3, 1.8), new THREE.MeshStandardMaterial({color:frontColor, roughness:0.4})); // 3 mm naad, zelfde dikte/kleur als de deuren
+            front.material.color.multiplyScalar(0.9);
+            front.position.set(cx, dy, frontZ+0.9);
             cellGroup.add(front);
             if(hasHandle(cell)){
             const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
-            handle.position.set(cx, dy, frontZ+2.3);
+            handle.position.set(cx, dy, frontZ+2.4);
             cellGroup.add(handle);
             }
           }
@@ -4422,12 +4423,13 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           if(innerRL){
             addInnerDrawer(cellGroup, cx, dy, spanWidth - 2*t - 1, dh - 2, cellDepthEff, t, mat.color);
           } else {
-            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:frontColorRL, roughness:0.6}));
-            front.position.set(cx, dy, frontZ+1);
+            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-0.3, dh-0.3, 1.8), new THREE.MeshStandardMaterial({color:frontColorRL, roughness:0.4})); // 3 mm naad, zelfde dikte/kleur als de deuren
+            front.material.color.multiplyScalar(0.9);
+            front.position.set(cx, dy, frontZ+0.9);
             cellGroup.add(front);
             if(hasHandle(cell)){
             const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
-            handle.position.set(cx, dy, frontZ+2.3);
+            handle.position.set(cx, dy, frontZ+2.4);
             cellGroup.add(handle);
             }
           }
