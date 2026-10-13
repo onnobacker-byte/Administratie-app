@@ -1041,6 +1041,9 @@
             <div class="summary-row" style="font-weight:700;font-size:15px;border-top:2px solid var(--ink);margin-top:8px;padding-top:14px;">
               <span>Totaalprijs (excl. btw)</span><span id="totalPrice">€ 0</span>
             </div>
+            <div class="summary-row" style="font-weight:700;font-size:15px;">
+              <span>Totaalprijs (incl. btw)</span><span id="totalPriceIncl">€ 0</span>
+            </div>
             <div class="cta-row">
               <button class="btn" id="requestBtn">Vraag offerte aan met dit ontwerp</button>
               <button class="btn secondary" id="showQuoteBtn" type="button">Offerte bekijken (briefpapier)</button>
@@ -1135,7 +1138,7 @@
       </div></template>
 
       <div class="wizard-preview-price" id="wizardPreviewPrice">
-        <span class="wizard-preview-price-label">Totaalprijs (indicatie, excl. btw)</span>
+        <span class="wizard-preview-price-label">Totaalprijs (indicatie, incl. btw)</span>
         <strong class="wizard-preview-price-value" id="previewTotalPrice">€ 0</strong>
       </div>
     </div>
@@ -1331,8 +1334,12 @@ function isLightColor(hex){
 // niet van elkaar te onderscheiden waren) — gedeeld tussen het hoofd-vooraanzicht/live-voorbeeld
 // (renderCanvas2d) en het losse voorbeeld in de vak-editor (renderModulePreviewSvg), zodat beide
 // altijd hetzelfde tonen en een verbetering nooit op maar één van de twee plekken vergeten wordt.
-function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor){
+function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor){
   const NS = 'http://www.w3.org/2000/svg';
+  // gewone laden: het front heeft de kleur van de buitenkant (frontColor) — ook in het 2D-vooraanzicht
+  const hasFront = (frontColor !== undefined && frontColor !== null);
+  const frontFill = hasFront ? '#' + frontColor.toString(16).padStart(6,'0') : 'none';
+  const frontStroke = hasFront ? (isLightColor(frontColor) ? '#15151366' : '#eeece599') : strokeColor;
   if(cell.type==='planken'){
     const n = Number(cell.options.shelves)||3;
     for(let i=1;i<=n;i++){
@@ -1362,12 +1369,14 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor){
       front.setAttribute('x', x+gap); front.setAttribute('y', dy+gap);
       front.setAttribute('width', Math.max(0,w-gap*2)); front.setAttribute('height', Math.max(0,dh-gap*2));
       front.setAttribute('rx', Math.min(3, dh*0.08));
-      front.setAttribute('fill', 'none');
-      front.setAttribute('stroke', strokeColor);
+      const innerDrawer = (drawerStyleOf(cell) === 'binnen');
+      front.setAttribute('fill', innerDrawer ? 'none' : frontFill);
+      front.setAttribute('stroke', innerDrawer ? strokeColor : frontStroke);
       front.setAttribute('stroke-width', '1.6');
+      if(innerDrawer) front.setAttribute('stroke-dasharray', '5 4'); // binnenladen zitten achter een deur
       front.style.pointerEvents = 'none';
       container.appendChild(front);
-      if(hasHandle(cell)){
+      if(hasHandle(cell) && drawerStyleOf(cell) !== 'binnen'){
       const handleW = Math.min(w*0.32, 34);
       const handle = document.createElementNS(NS,'rect');
       handle.setAttribute('x', x+w/2-handleW/2); handle.setAttribute('y', dy+dh/2-2);
@@ -1451,12 +1460,14 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor){
       front.setAttribute('x', x+gap); front.setAttribute('y', dy+gap);
       front.setAttribute('width', Math.max(0,w-gap*2)); front.setAttribute('height', Math.max(0,dh-gap*2));
       front.setAttribute('rx', Math.min(3, dh*0.08));
-      front.setAttribute('fill', 'none');
-      front.setAttribute('stroke', strokeColor);
+      const innerDrawer = (drawerStyleOf(cell) === 'binnen');
+      front.setAttribute('fill', innerDrawer ? 'none' : frontFill);
+      front.setAttribute('stroke', innerDrawer ? strokeColor : frontStroke);
       front.setAttribute('stroke-width', '1.6');
+      if(innerDrawer) front.setAttribute('stroke-dasharray', '5 4'); // binnenladen zitten achter een deur
       front.style.pointerEvents = 'none';
       container.appendChild(front);
-      if(hasHandle(cell)){
+      if(hasHandle(cell) && drawerStyleOf(cell) !== 'binnen'){
       const handleW = Math.min(w*0.32, 34);
       const handle = document.createElementNS(NS,'rect');
       handle.setAttribute('x', x+w/2-handleW/2); handle.setAttribute('y', dy+dh/2-2);
@@ -1544,7 +1555,7 @@ const TYPES = [
 ];
 
 let rows = [ {id:'r0', height:100, fixed:false}, {id:'r1', height:100, fixed:false} ]; // index0 = bottom
-let cols = [ {id:'c0', width:65, depth:58, isFiller:true}, {id:'c1', width:65, depth:58, isFiller:true} ];
+let cols = [ {id:'c0', width:65, depth:60, isFiller:true}, {id:'c1', width:65, depth:60, isFiller:true} ];
 let lockedTotalWidth = cols.reduce((s,c)=>s+c.width,0); // de "totale breedte" die vastgehouden wordt
 let lockedTotalHeight = rows.reduce((s,r)=>s+r.height,0); // de "totale hoogte" die vastgehouden wordt
 let rowFixOrder = []; // ids van vastgezette rijen, oudste eerst
@@ -1588,7 +1599,7 @@ function roomWallLengthCm(side){ return (side==='noord'||side==='zuid') ? room.w
 function plintHeightCm(){ return plintHeightMm / 10; }
 function widthBudget(){ return Math.max(10, lockedTotalWidth - marginLeftCm - marginRightCm - endLeftCm() - endRightCm()); }
 function heightBudget(){ return Math.max(10, lockedTotalHeight - plintHeightCm() - marginTopCm - (worktop.enabled ? worktop.thicknessCm : 0)); }
-let globalDepth = 58;
+let globalDepth = 60; // standaard kastdiepte 60 cm
 let cells = {}; // key `${rowId}_${colId}` -> {type, material, options}
 let selectedCell = null;
 let currentView = '3d';
@@ -1613,6 +1624,9 @@ function getCell(rowId, colId){
 // Openen van deuren/laden van dit vak: 'greep' (standaard, een zichtbare handgreep) of 'push'
 // (push-to-open: geen greep, je drukt tegen het front). Bij 'push' tekenen we nergens een greep.
 function hasHandle(c){ return !c || c.handleType !== 'push'; }
+// Soort laden: 'voor' = gewone laden (het lade-front zit aan de voorkant, in de kleur van de BUITENKANT) of
+// 'binnen' = binnenladen: de laden zitten achter een deur (de deur is buitenkleur, de laden binnenkleur).
+function drawerStyleOf(c){ return (c && c.options && c.options.drawerStyle === 'binnen') ? 'binnen' : 'voor'; }
 const MAX_MODULE_WIDTH = 60;
 
 // verwijdert bestaande 'opvul'-kolommen en voegt nieuwe toe zodat de som weer klopt met
@@ -1985,7 +1999,7 @@ function applyTotalDepth(newDepth){
 function syncTotalInputs(){
   const totalW = Math.round(lockedTotalWidth * 10) / 10;
   const totalH = Math.round(lockedTotalHeight * 10) / 10;
-  const totalD = cols.length ? cols[0].depth : 58;
+  const totalD = cols.length ? cols[0].depth : 60;
   const wInp = document.getElementById('totalWidthInput');
   const hInp = document.getElementById('totalHeightInput');
   const dInp = document.getElementById('totalDepthInput');
@@ -2585,7 +2599,7 @@ function renderCanvas2d(targetId){
       }
 
       const strokeColor = isLightColor(mat.color) ? '#15151366' : '#eeece599';
-      drawCellTypeVisual(g, cell, xAcc, rowY, cw, rh, strokeColor);
+      drawCellTypeVisual(g, cell, xAcc, rowY, cw, rh, strokeColor, matOf(cell.doorMaterial || cell.material).color);
 
       svg.appendChild(g);
     });
@@ -2744,7 +2758,7 @@ function renderModulePreviewSvg(container, cell, rowHeightCm, colWidthCm){
   rect.setAttribute('fill', '#'+mat.color.toString(16).padStart(6,'0'));
   svg.appendChild(rect);
   const strokeColor = isLightColor(mat.color) ? '#15151366' : '#eeece599';
-  drawCellTypeVisual(svg, cell, 0, 0, w, h, strokeColor);
+  drawCellTypeVisual(svg, cell, 0, 0, w, h, strokeColor, matOf(cell.doorMaterial || cell.material).color);
   if(cell.door){
     const doors = Number(cell.options.doors)||1;
     for(let d=0; d<doors; d++){
@@ -3130,6 +3144,10 @@ function renderCellEditorInner(backdrop, box){
   let inhoud = '';
   if(cell.type==='planken') inhoud += line2('Aantal planken', btns('shelves', nums(6), Number(cell.options.shelves)||3));
   if(cell.type==='laden') inhoud += line2('Aantal laden', btns('drawers', nums(6), Number(cell.options.drawers)||3));
+  if(cell.type==='laden' || cell.type==='roede-laden'){
+    inhoud += line2('Soort laden', btns('drawerstyle', [['voor','Gewone laden'],['binnen','Binnenladen (achter een deur)']], drawerStyleOf(cell))
+      + `<span class="cs-hint">${drawerStyleOf(cell)==='binnen' ? 'de laden zitten achter een deur: de deur heeft de kleur van de buitenkant, de laden die van de binnenkant' : 'het front van de laden heeft dezelfde kleur als de buitenkant van de kast'}</span>`);
+  }
   if(cell.type==='kledinglift') inhoud += line2('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
   html += group('Inhoud', inhoud);
   if(cell.type === 'tv'){
@@ -3287,6 +3305,7 @@ function renderCellEditorInner(backdrop, box){
       const rNow = rows.findIndex(r => r.id === selectedCell.rowId);
       const spNow = computeDoorSpans(col.id).find(s => s.startIdx <= rNow && rNow <= s.endIdx);
       const ownerCell = spNow ? getCell(rows[spNow.startIdx].id, col.id) : c;
+      if(act==='doorcount' || act==='door'){ ownerCell.options.doorAuto = false; c.options.doorAuto = false; }
       if(act==='doorcount'){
         const n = Number(val);
         if(n === 0){ if(spNow){ ownerCell.door = false; ownerCell.doorSpan = 1; } c.door = false; }
@@ -3318,6 +3337,15 @@ function renderCellEditorInner(backdrop, box){
       else if(act==='shelves') c.options.shelves = Number(val);
       else if(act==='liftmode') c.options.liftMode = val;
       else if(act==='drawers') c.options.drawers = Number(val);
+      else if(act==='drawerstyle'){
+        c.options.drawerStyle = (val === 'binnen') ? 'binnen' : 'voor';
+        if(c.options.drawerStyle === 'binnen'){
+          // binnenladen horen achter een deur: staat er nog geen deur, dan zetten we er automatisch een
+          if(!spNow && !c.door){ c.door = true; c.doorSpan = 1; c.options.doors = Number(c.options.doors)||1; c.options.doorAuto = true; }
+        } else if(c.options.doorAuto){
+          c.door = false; c.doorSpan = 1; c.options.doorAuto = false; // de automatisch toegevoegde deur gaat weer weg
+        }
+      }
       else if(act==='mergeRight'){
         const next = cIdx + spanAt(cIdx);
         if(next < cols.length){
@@ -3659,9 +3687,9 @@ function applyWallState(state){
 function defaultWallState(){
   return {
     rows: [ {id:uid('r'), height:100, fixed:false}, {id:uid('r'), height:100, fixed:false} ],
-    cols: [ {id:uid('c'), width:60, depth:58, isFiller:true}, {id:uid('c'), width:60, depth:58, isFiller:true}, {id:uid('c'), width:60, depth:58, isFiller:true} ], // 3 x 60 = 180 = lockedTotalWidth
+    cols: [ {id:uid('c'), width:60, depth:60, isFiller:true}, {id:uid('c'), width:60, depth:60, isFiller:true}, {id:uid('c'), width:60, depth:60, isFiller:true} ], // 3 x 60 = 180 = lockedTotalWidth
     cells: {},
-    lockedTotalWidth: 180, lockedTotalHeight: 200, globalDepth: 58, // 180 = 3x MAX_MODULE_WIDTH, zodat een vers gekozen hoekopstelling niet met een lelijke 1-smal/1-heel-breed vulkolom-verdeling start (bij 130cm bleef er te weinig over na de hoekbonus, waardoor er maar 1 gewone vulkolom overbleef)
+    lockedTotalWidth: 180, lockedTotalHeight: 200, globalDepth: 60, // 180 = 3x MAX_MODULE_WIDTH, zodat een vers gekozen hoekopstelling niet met een lelijke 1-smal/1-heel-breed vulkolom-verdeling start (bij 130cm bleef er te weinig over na de hoekbonus, waardoor er maar 1 gewone vulkolom overbleef)
     rowFixOrder: [],
     plintHeightMm: 0, plintMaterial: defMatId(),
     marginLeftCm: 0, marginRightCm: 0, marginTopCm: 0,
@@ -3820,7 +3848,7 @@ function renderWallTabs(){
   mEl.style.background='rgba(176,134,85,0.08)';
   const labels = wallLabels();
   const oIdx = masterWallIndex===0 ? 1 : 0;
-  const otherDepth = walls[oIdx] ? Math.max(...walls[oIdx].cols.map(c=>c.depth)) : 58;
+  const otherDepth = walls[oIdx] ? Math.max(...walls[oIdx].cols.map(c=>c.depth)) : 60;
   mEl.innerHTML = `<span class="lbl" style="align-self:center;margin-right:6px;font-weight:600;">↳ Loopt door in de hoek:</span>` +
     labels.map((label,i)=>`<button class="type-btn corner-master-btn ${i===masterWallIndex?'active':''}" data-masterwall="${i}" style="${i===masterWallIndex?'background:#b08655;border-color:#b08655;color:#fff;':''}">${label}</button>`).join('') +
     `<span class="lbl" style="align-self:center;margin-left:14px;font-size:10px;color:var(--graphite);">(dit is niet hetzelfde als wisselen van wand hierboven — dit bepaalt alleen welke wand door de hoek heen loopt)</span>`;
@@ -3873,7 +3901,7 @@ function switchWall(index){
 function computeWallTransformsFlatPlan(nominalWidths, depths){
   const n = nominalWidths.length;
   if(n <= 1) return [ {x:0, z:0, ry:0} ];
-  const d = depths || nominalWidths.map(()=>58);
+  const d = depths || nominalWidths.map(()=>60);
   if(n===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling')){
     // Bij hoek-rechts is wand B (index 1) de rechte/doorgaande wand en wand A (index 0) de wand die
     // de hoek om draait — het spiegelbeeld van hoek-links (waar dit precies andersom is). Zie
@@ -3882,7 +3910,7 @@ function computeWallTransformsFlatPlan(nominalWidths, depths){
     const primaryIdx = (selectedLayout==='hoek-rechts') ? 1 : 0;
     const secondaryIdx = primaryIdx===0 ? 1 : 0;
     const wp = nominalWidths[primaryIdx], ws = nominalWidths[secondaryIdx]||60;
-    const dp = d[primaryIdx]||58, ds = d[secondaryIdx]||58;
+    const dp = d[primaryIdx]||60, ds = d[secondaryIdx]||60;
     const result = new Array(2);
     result[primaryIdx] = { x: wp/2, z: 0, ry: 0 };
     result[secondaryIdx] = { x: wp - ds/2, z: dp/2 + ws/2, ry: -Math.PI/2 };
@@ -3894,7 +3922,7 @@ function computeWallTransformsFlatPlan(nominalWidths, depths){
 function computeWallTransforms(nominalWidths, depths){
   const n = nominalWidths.length;
   if(n <= 1) return [ {x:0, z:0, ry:0} ];
-  const d = depths || nominalWidths.map(()=>58);
+  const d = depths || nominalWidths.map(()=>60);
   if(n===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling')){
     // Welke wand recht blijft staan ("primary") en welke de hoek om draait ("secondary") is een
     // VASTE eigenschap van de LAYOUT-KEUZE (hoek-links/hoek-rechts), niet van welke wand doorloopt
@@ -3907,7 +3935,7 @@ function computeWallTransforms(nominalWidths, depths){
     const primaryIdx = (selectedLayout==='hoek-rechts') ? 1 : 0;
     const secondaryIdx = primaryIdx===0 ? 1 : 0;
     const wp = nominalWidths[primaryIdx], ws = nominalWidths[secondaryIdx]||60;
-    const dp = d[primaryIdx]||58, ds = d[secondaryIdx]||58;
+    const dp = d[primaryIdx]||60, ds = d[secondaryIdx]||60;
     // de primary-wand loopt met zijn eigen (normale) kastdiepte door tot aan zijn volledige breedte;
     // de secondary-wand wijkt aan de hoekkant terug met precies de diepte van de primary-wand, zodat
     // de twee wanden precies aansluiten zonder gat of overlap — welke van de twee de bredere
@@ -3920,7 +3948,7 @@ function computeWallTransforms(nominalWidths, depths){
   }
   if(selectedLayout==='u-opstelling'){
     const w0=nominalWidths[0], w1=nominalWidths[1]||60, w2=nominalWidths[2]||60;
-    const d0=d[0]||58, d1=d[1]||58, d2=d[2]||58;
+    const d0=d[0]||60, d1=d[1]||60, d2=d[2]||60;
     return [
       {x:w0/2, z:0, ry:0},
       {x:d1/2, z:(w1/2 - d0/2), ry:Math.PI/2},
@@ -3932,7 +3960,7 @@ function computeWallTransforms(nominalWidths, depths){
       // Twee identieke kastenrijen staan rug-aan-rug (geen wand/gat ertussen): wand 1 kijkt de kamer
       // in, wand 2 kijkt richting de hoofdopstelling. "seam" is het vaste vlak waar hun achterkanten
       // elkaar raken — dezelfde afstand tot de hoofdopstelling als bij de 1-zijdige variant hierboven.
-      const d1 = d[1]||58, d2 = d[2]||58;
+      const d1 = d[1]||60, d2 = d[2]||60;
       const seam = 180;
       return [
         {x:0, z:0, ry:0},
@@ -4307,16 +4335,22 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         }
       } else if(cell.type==='laden'){
         const n = Number(cell.options.drawers)||3;
+        const inner = (drawerStyleOf(cell) === 'binnen');
+        const frontColor = matOf(cell.doorMaterial || cell.material).color; // gewone laden: kleur van de buitenkant
         for(let i=0;i<n;i++){
           const dh = rowHeightEff/n;
           const dy = yAcc + dh*(i+0.5) - totalStackHeightCm/2 + rowGapOffset(ri);
-          const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:mat.color, roughness:0.6}));
-          front.position.set(cx, dy, frontZ+1);
-          cellGroup.add(front);
-          if(hasHandle(cell)){
-          const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
-          handle.position.set(cx, dy, frontZ+2.3);
-          cellGroup.add(handle);
+          if(inner){
+            addInnerDrawer(cellGroup, cx, dy, spanWidth - 2*t - 1, dh - 2, cellDepthEff, t, mat.color);
+          } else {
+            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:frontColor, roughness:0.6}));
+            front.position.set(cx, dy, frontZ+1);
+            cellGroup.add(front);
+            if(hasHandle(cell)){
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
+            handle.position.set(cx, dy, frontZ+2.3);
+            cellGroup.add(handle);
+            }
           }
         }
       } else if(cell.type==='roede'){
@@ -4345,16 +4379,22 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         cellGroup.add(rod);
         const ladenZoneH = rowHeightEff*0.62;
         const n = Math.max(1, Number(cell.options.drawers)||2);
+        const innerRL = (drawerStyleOf(cell) === 'binnen');
+        const frontColorRL = matOf(cell.doorMaterial || cell.material).color; // gewone laden: kleur van de buitenkant
         for(let i=0;i<n;i++){
           const dh = ladenZoneH/n;
           const dy = yAcc + dh*(i+0.5) - totalStackHeightCm/2 + rowGapOffset(ri);
-          const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:mat.color, roughness:0.6}));
-          front.position.set(cx, dy, frontZ+1);
-          cellGroup.add(front);
-          if(hasHandle(cell)){
-          const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
-          handle.position.set(cx, dy, frontZ+2.3);
-          cellGroup.add(handle);
+          if(innerRL){
+            addInnerDrawer(cellGroup, cx, dy, spanWidth - 2*t - 1, dh - 2, cellDepthEff, t, mat.color);
+          } else {
+            const front = new THREE.Mesh(new THREE.BoxGeometry(spanWidth-3, dh-2, 2), new THREE.MeshStandardMaterial({color:frontColorRL, roughness:0.6}));
+            front.position.set(cx, dy, frontZ+1);
+            cellGroup.add(front);
+            if(hasHandle(cell)){
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(spanWidth*0.3, 1.2, 1.5), new THREE.MeshStandardMaterial({color:detailColor}));
+            handle.position.set(cx, dy, frontZ+2.3);
+            cellGroup.add(handle);
+            }
           }
         }
       } else if(cell.type==='kledinglift'){
@@ -4511,6 +4551,21 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
   return { totalWidthCm, totalStackHeightCm, marginLeftCm: mL, marginRightCm: mR, marginTopCm, plintHeightCm: plintHeightCm(), maxDepthCm };
 }
 
+// Een binnenlade: een lade-bak (front + zijkanten + bodem + achterkant) die ACHTER de deur zit, in de kleur van de
+// binnenkant. cx/dy = midden van de lade, w/h = breedte/hoogte, depth = diepte van het vak, t = paneeldikte.
+function addInnerDrawer(grp, cx, dy, w, h, depth, t, color){
+  const m = new THREE.MeshStandardMaterial({color:color, roughness:0.7});
+  const d = Math.max(10, depth - 8);   // iets korter dan het vak
+  const z0 = depth/2 - 5 - d/2;        // voorkant van de lade ligt ~5 cm achter de deurkant
+  const tt = Math.min(t, 1.5);
+  const front = new THREE.Mesh(new THREE.BoxGeometry(w, h, tt), m); front.position.set(cx, dy, z0 + d/2 - tt/2); grp.add(front);
+  const back  = new THREE.Mesh(new THREE.BoxGeometry(w - 2*tt, h - 3, tt), m); back.position.set(cx, dy - 1, z0 - d/2 + tt/2); grp.add(back);
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(w - 2*tt, tt, d - tt), m); bottom.position.set(cx, dy - h/2 + tt/2 + 1, z0); grp.add(bottom);
+  [-1,1].forEach(side=>{
+    const sd = new THREE.Mesh(new THREE.BoxGeometry(tt, h - 3, d - tt), m);
+    sd.position.set(cx + side*(w/2 - tt/2), dy - 1, z0); grp.add(sd);
+  });
+}
 // bouwt de gedeelde hoekkast-module: één vierkant blok (sizeX x sizeZ) dat het gat tussen
 // de twee ingekorte wanden opvult. Massieve platen op elke rij-grens, hol ertussenin —
 // exact het patroon dat in de referentie-STL is gemeten.
@@ -4696,7 +4751,7 @@ function build3dModel(){
     const cornerSideFor = (idx) => (idx===primaryIdxWt) ? 'right' : (selectedLayout==='hoek-rechts' ? 'right' : 'left');
     [0,1].forEach(idx=>{
       const otherIdx = idx===0 ? 1 : 0;
-      const otherDepth = wallList[otherIdx] ? wallList[otherIdx].globalDepth : 58;
+      const otherDepth = wallList[otherIdx] ? wallList[otherIdx].globalDepth : 60;
       const cabinetWidenedHere = (idx === cabinetMasterIdx);
       const worktopShouldWidenHere = (idx === wtMasterIdx);
       let extendCm = 0;
@@ -5363,8 +5418,15 @@ function calculatePrice(){
   // Dezelfde prijs staat ook constant onder het live voorbeeld (op elke stap, niet alleen bij het
   // overzicht in de laatste stap) — dus hier in één moeite door meenemen i.p.v. een tweede,
   // makkelijk-uit-sync-te-raken prijsberekening te onderhouden.
+  // onder het voorbeeld tonen we de prijs INCLUSIEF btw (de klant ziet liever het bedrag dat hij echt betaalt)
+  const btwPctNow = (otherPrices.btwPct === undefined || otherPrices.btwPct === null) ? 21 : otherPrices.btwPct;
+  const totalIncl = total * (1 + btwPctNow/100);
+  let priceTextIncl = '€ ' + totalIncl.toLocaleString('nl-NL', {maximumFractionDigits:0});
+  if(!(total > 0)) priceTextIncl = priceText;
   const previewEl = document.getElementById('previewTotalPrice');
-  if(previewEl) previewEl.textContent = priceText;
+  if(previewEl) previewEl.textContent = priceTextIncl;
+  const inclEl = document.getElementById('totalPriceIncl');
+  if(inclEl) inclEl.textContent = priceTextIncl;
   const edgebandEl = document.getElementById('edgebandMeters');
   if(edgebandEl) edgebandEl.textContent = edgebandM.toLocaleString('nl-NL', {maximumFractionDigits:1}) + ' m';
   return total;
@@ -5718,7 +5780,7 @@ function renderKeepingEditorFocus(){
 
 document.getElementById('totalWidthInput').addEventListener('change', e => applyTotalWidth(parseNum(e.target.value)||100));
 document.getElementById('totalHeightInput').addEventListener('change', e => applyTotalHeight(parseNum(e.target.value)||100));
-document.getElementById('totalDepthInput').addEventListener('change', e => applyTotalDepth(parseNum(e.target.value)||58));
+document.getElementById('totalDepthInput').addEventListener('change', e => applyTotalDepth(parseNum(e.target.value)||60));
 document.getElementById('widthMinusBtn').addEventListener('click', () => applyTotalWidth(Math.max(20, lockedTotalWidth-10)));
 document.getElementById('widthPlusBtn').addEventListener('click', () => applyTotalWidth(Math.min(1000, lockedTotalWidth+10)));
 document.getElementById('heightMinusBtn').addEventListener('click', () => applyTotalHeight(Math.max(20, lockedTotalHeight-10)));
@@ -6300,8 +6362,8 @@ function quoteEuro(v){ return '€ ' + (Number(v)||0).toLocaleString('nl-NL', {m
 function quoteTypeText(cell){
   const lbl = (TYPES.find(x => x.id === cell.type) || {label:cell.type}).label;
   if(cell.type === 'planken') return lbl + ' (' + (Number(cell.options.shelves)||3) + ' planken)';
-  if(cell.type === 'laden') return lbl + ' (' + (Number(cell.options.drawers)||3) + ' laden)';
-  if(cell.type === 'roede-laden') return lbl + ' (roede + ' + (Math.max(1, Number(cell.options.drawers)||2)) + ' laden)';
+  if(cell.type === 'laden') return lbl + ' (' + (Number(cell.options.drawers)||3) + (drawerStyleOf(cell)==='binnen' ? ' binnenladen achter een deur)' : ' laden)');
+  if(cell.type === 'roede-laden') return lbl + ' (roede + ' + (Math.max(1, Number(cell.options.drawers)||2)) + (drawerStyleOf(cell)==='binnen' ? ' binnenladen achter een deur)' : ' laden)');
   if(cell.type === 'plank-roede') return lbl + ' (1 plank + roede)';
   if(cell.type === 'tv') return 'Open tv-vak (tv niet inbegrepen)';
   if(cell.type === 'kledinglift') return lbl + ' (' + ((cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig') + ')';
