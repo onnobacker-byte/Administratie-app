@@ -1,0 +1,7 @@
+# Zorgt dat browsers (vooral Safari op de telefoon) de HTML-pagina's steeds opnieuw ophalen,
+# zodat wijzigingen direct zichtbaar zijn en de oude versie niet blijft hangen.
+<IfModule mod_headers.c>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>

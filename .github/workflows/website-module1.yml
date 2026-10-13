@@ -14,7 +14,7 @@ name: Website module1.nl bijwerken
 on:
   push:
     branches: [main]
-    paths: [module1-configurator.html]
+    paths: [module1-configurator.html, homepage-oud.html]
   workflow_dispatch:
 
 concurrency:
@@ -55,6 +55,11 @@ jobs:
           curl --silent --show-error --ssl --user "$FTP_USERNAME:$FTP_PASSWORD" \
             "ftp://$FTP_SERVER/${FTP_PATH#/}" -o "reservekopie/$(basename "$FTP_PATH")" \
             || echo "Geen bestaand bestand gevonden om te bewaren."
+          # de startpagina (index.html in dezelfde map) ook bewaren
+          DIR="${FTP_PATH%/*}"; [ "$DIR" = "$FTP_PATH" ] && DIR=""
+          curl --silent --show-error --ssl --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            "ftp://$FTP_SERVER/${DIR:+$DIR/}index.html" -o "reservekopie/index.html" \
+            || echo "Geen bestaande startpagina gevonden om te bewaren."
 
       - name: Reservekopie bewaren
         uses: actions/upload-artifact@v4
@@ -75,3 +80,10 @@ jobs:
             --user "$FTP_USERNAME:$FTP_PASSWORD" \
             -T module1-configurator.html "ftp://$FTP_SERVER/${FTP_PATH#/}"
           echo "Klaar: module1-configurator.html staat nu op $FTP_PATH"
+
+          # de startpagina als index.html in dezelfde map
+          DIR="${FTP_PATH%/*}"; [ "$DIR" = "$FTP_PATH" ] && DIR=""
+          curl --silent --show-error --fail --ssl --ftp-create-dirs \
+            --user "$FTP_USERNAME:$FTP_PASSWORD" \
+            -T homepage-oud.html "ftp://$FTP_SERVER/${DIR:+$DIR/}index.html"
+          echo "Klaar: startpagina staat nu op ${DIR:+$DIR/}index.html"

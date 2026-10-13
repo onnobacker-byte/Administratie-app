@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Administratie">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
 <meta name="theme-color" content="#F0EBDD">
 <style>
   :root{
@@ -2206,7 +2208,7 @@ function attachViewHandlers(){
     });
     resetBtn.addEventListener('click', async ()=>{
       if(resetInput.value.trim() !== 'VERWIJDEREN') return;
-      if(!confirm('Weet je het zeker? Alle klanten, projecten, offertes, facturen, materialen en urenregistraties worden definitief verwijderd. Dit kan niet ongedaan gemaakt worden.')) return;
+      if(!confirm('Weet je het zeker? Alle klanten, projecten, offertes, facturen, bestellingen, planning en urenregistraties worden definitief verwijderd. De materialen blijven staan. Dit kan niet ongedaan gemaakt worden.')) return;
       resetBtn.disabled = true;
       resetBtn.textContent = 'Bezig met wissen...';
       try{
@@ -2216,7 +2218,7 @@ function attachViewHandlers(){
       }catch(err){
         showToast('Wissen mislukt: ' + err.message);
         resetBtn.disabled = false;
-        resetBtn.textContent = 'Alle gegevens definitief wissen';
+        resetBtn.textContent = 'Alles wissen behalve materialen';
       }
     });
   }
@@ -2351,13 +2353,13 @@ function viewBackup(){
     </div>
 
     <div class="panel" style="padding:22px; max-width:520px; border-color:var(--rust);">
-      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px; color:var(--rust);">Gevarenzone: alles wissen</h3>
-      <p class="info-line" style="margin-bottom:14px;">Verwijdert alle klanten, projecten, offertes, facturen, materialen en urenregistraties definitief — bijvoorbeeld om test-gegevens weg te halen vóór een echte start. Werknemersaccounts en je instellingen blijven staan. <b>Dit kan niet ongedaan gemaakt worden.</b></p>
+      <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 8px; color:var(--rust);">Gevarenzone: alles wissen (materialen blijven)</h3>
+      <p class="info-line" style="margin-bottom:14px;">Verwijdert alle klanten, projecten, offertes, facturen, bestellingen, planning en urenregistraties definitief. De materialen met hun prijzen en de website-prijzen blijven staan — bijvoorbeeld om test-gegevens weg te halen vóór een echte start. Werknemersaccounts en je instellingen blijven staan. <b>Dit kan niet ongedaan gemaakt worden.</b></p>
       <div class="field" style="margin-bottom:10px;">
         <label>Typ ter bevestiging exact: <b>VERWIJDEREN</b></label>
         <input type="text" id="reset-bevestig" placeholder="VERWIJDEREN">
       </div>
-      <button class="btn btn-danger" id="btn-reset-alles" disabled>Alle gegevens definitief wissen</button>
+      <button class="btn btn-danger" id="btn-reset-alles" disabled>Alles wissen behalve materialen</button>
     </div>
   `;
 }
@@ -4394,17 +4396,19 @@ async function herstelBackup(file){
 }
 
 async function resetAlleTestData(){
+  // Wist alle test-gegevens, maar laat de MATERIALEN (met prijzen), de website-prijzen, de werknemersaccounts en de instellingen staan.
   const verwijderopdrachten = [];
   state.klanten.forEach(k=> verwijderopdrachten.push(db.collection('klanten').doc(k.id).delete()));
   state.projecten.forEach(p=> verwijderopdrachten.push(db.collection('projecten').doc(p.id).delete()));
   state.offertes.forEach(o=> verwijderopdrachten.push(db.collection('offertes').doc(o.id).delete()));
   state.facturen.forEach(f=> verwijderopdrachten.push(db.collection('facturen').doc(f.id).delete()));
-  state.materialen.forEach(m=> verwijderopdrachten.push(db.collection('materialen').doc(m.id).delete()));
   state.urenregistraties.forEach(u=> verwijderopdrachten.push(db.collection('urenregistraties').doc(u.id).delete()));
+  (state.bestellingen||[]).forEach(b=> verwijderopdrachten.push(db.collection('bestellingen').doc(b.id).delete()));
+  (state.planning||[]).forEach(pl=> verwijderopdrachten.push(db.collection('planning').doc(pl.id).delete()));
   await Promise.all(verwijderopdrachten);
 
   state.klanten = []; state.projecten = []; state.offertes = []; state.facturen = [];
-  state.materialen = []; state.urenregistraties = [];
+  state.urenregistraties = []; state.bestellingen = []; state.planning = [];
   state.counters = {klant:0, project:0, offerte:0, factuur:0};
   await db.collection('meta').doc('counters').set(state.counters);
 }
