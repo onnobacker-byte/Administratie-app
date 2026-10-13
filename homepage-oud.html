@@ -676,7 +676,7 @@ const TYPES = [
 ];
 
 let rows = [ {id:'r0', height:100, fixed:false}, {id:'r1', height:100, fixed:false} ]; // index0 = bottom
-let cols = [ {id:'c0', width:65, depth:58, isFiller:true}, {id:'c1', width:65, depth:58, isFiller:true} ];
+let cols = [ {id:'c0', width:65, depth:60, isFiller:true}, {id:'c1', width:65, depth:60, isFiller:true} ];
 let lockedTotalWidth = cols.reduce((s,c)=>s+c.width,0); // de "totale breedte" die vastgehouden wordt
 let lockedTotalHeight = rows.reduce((s,r)=>s+r.height,0); // de "totale hoogte" die vastgehouden wordt
 let rowFixOrder = []; // ids van vastgezette rijen, oudste eerst
@@ -689,7 +689,7 @@ let worktop = { enabled:false, thicknessCm:4, overhangCm:2, material:'kalkwit', 
 function plintHeightCm(){ return plintHeightMm / 10; }
 function widthBudget(){ return Math.max(10, lockedTotalWidth - marginLeftCm - marginRightCm); }
 function heightBudget(){ return Math.max(10, lockedTotalHeight - plintHeightCm() - marginTopCm - (worktop.enabled ? worktop.thicknessCm : 0)); }
-let globalDepth = 58;
+let globalDepth = 60;
 let cells = {}; // key `${rowId}_${colId}` -> {type, material, options}
 let selectedCell = null;
 let currentView = '2d';
@@ -969,7 +969,7 @@ function applyTotalDepth(newDepth){
 function syncTotalInputs(){
   const totalW = Math.round(lockedTotalWidth * 10) / 10;
   const totalH = Math.round(lockedTotalHeight * 10) / 10;
-  const totalD = cols.length ? cols[0].depth : 58;
+  const totalD = cols.length ? cols[0].depth : 60;
   const wInp = document.getElementById('totalWidthInput');
   const hInp = document.getElementById('totalHeightInput');
   const dInp = document.getElementById('totalDepthInput');
@@ -1961,9 +1961,9 @@ function applyWallState(state){
 function defaultWallState(){
   return {
     rows: [ {id:uid('r'), height:100, fixed:false}, {id:uid('r'), height:100, fixed:false} ],
-    cols: [ {id:uid('c'), width:65, depth:58, isFiller:true}, {id:uid('c'), width:65, depth:58, isFiller:true} ],
+    cols: [ {id:uid('c'), width:65, depth:60, isFiller:true}, {id:uid('c'), width:65, depth:60, isFiller:true} ],
     cells: {},
-    lockedTotalWidth: 130, lockedTotalHeight: 200, globalDepth: 58,
+    lockedTotalWidth: 130, lockedTotalHeight: 200, globalDepth: 60,
     rowFixOrder: [],
     plintHeightMm: 0, plintMaterial: 'zwart',
     marginLeftCm: 0, marginRightCm: 0, marginTopCm: 0,
@@ -2004,7 +2004,7 @@ function renderWallTabs(){
   mEl.style.flexWrap='wrap';
   const labels = wallLabels();
   const oIdx = masterWallIndex===0 ? 1 : 0;
-  const otherDepth = walls[oIdx] ? Math.max(...walls[oIdx].cols.map(c=>c.depth)) : 58;
+  const otherDepth = walls[oIdx] ? Math.max(...walls[oIdx].cols.map(c=>c.depth)) : 60;
   mEl.innerHTML = `<span class="lbl" style="align-self:center;margin-right:6px;">Loopt door:</span>` +
     labels.map((label,i)=>`<button class="type-btn ${i===masterWallIndex?'active':''}" data-masterwall="${i}">${label}</button>`).join('') +
     `<span class="lbl" style="align-self:center;margin-left:14px;font-size:10px;color:var(--graphite);">(beide wanden lopen nu hun volledige lengte door; de overlap in de hoek is de gedeelde hoekkast)</span>`;
@@ -2031,11 +2031,11 @@ function switchWall(index){
 function computeWallTransformsFlatPlan(nominalWidths, depths){
   const n = nominalWidths.length;
   if(n <= 1) return [ {x:0, z:0, ry:0} ];
-  const d = depths || nominalWidths.map(()=>58);
+  const d = depths || nominalWidths.map(()=>60);
   if(n===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling')){
     const mIdx = (masterWallIndex===1) ? 1 : 0;
     const oIdx = mIdx===0 ? 1 : 0;
-    const wM = nominalWidths[mIdx], wO = nominalWidths[oIdx]||60, dM = d[mIdx]||58, dO = d[oIdx]||58;
+    const wM = nominalWidths[mIdx], wO = nominalWidths[oIdx]||60, dM = d[mIdx]||60, dO = d[oIdx]||60;
     const zSign = (selectedLayout==='hoek-rechts') ? -1 : 1;
     const result = new Array(2);
     result[mIdx] = { x: wM/2, z: 0, ry: 0 };
@@ -2048,11 +2048,11 @@ function computeWallTransformsFlatPlan(nominalWidths, depths){
 function computeWallTransforms(nominalWidths, depths){
   const n = nominalWidths.length;
   if(n <= 1) return [ {x:0, z:0, ry:0} ];
-  const d = depths || nominalWidths.map(()=>58);
+  const d = depths || nominalWidths.map(()=>60);
   if(n===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling')){
     const mIdx = (masterWallIndex===1) ? 1 : 0;
     const oIdx = mIdx===0 ? 1 : 0;
-    const wM = nominalWidths[mIdx], wO = nominalWidths[oIdx]||60, dM = d[mIdx]||58, dO = d[oIdx]||58;
+    const wM = nominalWidths[mIdx], wO = nominalWidths[oIdx]||60, dM = d[mIdx]||60, dO = d[oIdx]||60;
     const zSign = (selectedLayout==='hoek-rechts') ? -1 : 1;
     // de hoekkast van de doorlopende wand overlapt met de diepte van de andere wand (en
     // omgekeerd) — dat overlappende vierkant ís de gedeelde hoekkast
@@ -2063,7 +2063,7 @@ function computeWallTransforms(nominalWidths, depths){
   }
   if(selectedLayout==='u-opstelling'){
     const w0=nominalWidths[0], w1=nominalWidths[1]||60, w2=nominalWidths[2]||60;
-    const d0=d[0]||58, d1=d[1]||58, d2=d[2]||58;
+    const d0=d[0]||60, d1=d[1]||60, d2=d[2]||60;
     return [
       {x:w0/2, z:0, ry:0},
       {x:d1/2, z:(w1/2 - d0/2), ry:Math.PI/2},
@@ -2987,7 +2987,7 @@ function renderKeepingEditorFocus(){
 
 document.getElementById('totalWidthInput').addEventListener('change', e => applyTotalWidth(parseNum(e.target.value)||100));
 document.getElementById('totalHeightInput').addEventListener('change', e => applyTotalHeight(parseNum(e.target.value)||100));
-document.getElementById('totalDepthInput').addEventListener('change', e => applyTotalDepth(parseNum(e.target.value)||58));
+document.getElementById('totalDepthInput').addEventListener('change', e => applyTotalDepth(parseNum(e.target.value)||60));
 document.getElementById('marginLeftInput').addEventListener('input', e => { marginLeftCm = Math.max(0, parseNum(e.target.value)||0); recomputeFillers(); render(); });
 document.getElementById('marginRightInput').addEventListener('input', e => { marginRightCm = Math.max(0, parseNum(e.target.value)||0); recomputeFillers(); render(); });
 document.getElementById('marginTopInput').addEventListener('input', e => { marginTopCm = Math.max(0, parseNum(e.target.value)||0); recomputeRowFlex(); render(); });
@@ -3078,22 +3078,22 @@ setProjectType('wandkast');
   activeWallIndex = 0;
   applyWallState(walls[0]);
   cols = [
-    { id: uid('c'), width: 60, depth: 58, isFiller: false },
-    { id: uid('c'), width: 120, depth: 58, isFiller: false },
+    { id: uid('c'), width: 60, depth: 60, isFiller: false },
+    { id: uid('c'), width: 120, depth: 60, isFiller: false },
   ];
   lockedTotalWidth = cols.reduce((s,c)=>s+c.width,0); // exact gelijk aan de som, geen afrondingsrestje
-  globalDepth = 58;
+  globalDepth = 60;
   cells = {};
   walls[0] = captureWallState();
 
   // Wand B: 2 gewone modules van 60cm, diepte 58cm (120cm totaal, geen hoekkast)
   applyWallState(walls[1]);
   cols = [
-    { id: uid('c'), width: 60, depth: 58, isFiller: false },
-    { id: uid('c'), width: 60, depth: 58, isFiller: false },
+    { id: uid('c'), width: 60, depth: 60, isFiller: false },
+    { id: uid('c'), width: 60, depth: 60, isFiller: false },
   ];
   lockedTotalWidth = cols.reduce((s,c)=>s+c.width,0);
-  globalDepth = 58;
+  globalDepth = 60;
   cells = {};
   walls[1] = captureWallState();
 
@@ -3117,7 +3117,7 @@ document.getElementById('toggleRoomBtn').addEventListener('click', e=>{
   if(renderer) build3dModel();
 });
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  rows=[{id:uid('r'),height:100}]; cols=[{id:uid('c'),width:60,depth:58,isFiller:true}]; lockedTotalWidth=60; globalDepth=58; cells={}; selectedCell=null; zoomDist=null; render();
+  rows=[{id:uid('r'),height:100}]; cols=[{id:uid('c'),width:60,depth:60,isFiller:true}]; lockedTotalWidth=60; globalDepth=60; cells={}; selectedCell=null; zoomDist=null; render();
 });
 document.getElementById('requestBtn').addEventListener('click', ()=>{
   const klantNaam = prompt('Wat is je naam?');
