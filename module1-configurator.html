@@ -1563,6 +1563,16 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor
       bolt.style.pointerEvents = 'none';
       container.appendChild(bolt);
     }
+  } else if(cell.type==='nis'){
+    // nis voor de wasbak: leeg vak (gestippeld) met een spoelbak en kraan erin
+    const nb = document.createElementNS(NS,'ellipse');
+    nb.setAttribute('cx', x+w/2); nb.setAttribute('cy', y+h*0.62); nb.setAttribute('rx', Math.max(0,w*0.3)); nb.setAttribute('ry', Math.max(0,Math.min(h*0.1, w*0.14)));
+    nb.setAttribute('fill', '#c9ced1'); nb.setAttribute('stroke', '#151513'); nb.setAttribute('stroke-width', '1.5'); nb.style.pointerEvents='none';
+    container.appendChild(nb);
+    const tap = document.createElementNS(NS,'path');
+    tap.setAttribute('d', `M${x+w/2} ${y+h*0.6} V${y+h*0.34} q0 ${-h*0.07} ${w*0.1} ${-h*0.07}`);
+    tap.setAttribute('fill','none'); tap.setAttribute('stroke','#151513'); tap.setAttribute('stroke-width','2.5'); tap.style.pointerEvents='none';
+    container.appendChild(tap);
   } else if(cell.type==='tv'){
     // open vak met een tv erin (alleen ter illustratie; de tv zelf hoort niet bij de kast)
     const sw = Math.min(w*0.86, (h*0.62)*16/9), sh = sw*9/16;
@@ -1586,6 +1596,7 @@ const TYPES = [
   {id:'roede-laden', label:'Roede + Laden', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><line x1="14" y1="16" x2="46" y2="16" stroke="#b08655" stroke-width="3"/><path d="M20 16 v6 M30 16 v6 M40 16 v6" stroke="#151513" stroke-width="1.5"/><line x1="10" y1="34" x2="50" y2="34" stroke="#151513" stroke-width="1.5"/><line x1="24" y1="25" x2="36" y2="25" stroke="#b08655" stroke-width="2.5"/><line x1="24" y1="43" x2="36" y2="43" stroke="#b08655" stroke-width="2.5"/>`},
   {id:'kledinglift', label:'Kledinglift', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><path d="M14 12 L18 30 M46 12 L42 30" stroke="#151513" stroke-width="2" fill="none"/><line x1="17" y1="30" x2="43" y2="30" stroke="#b08655" stroke-width="3"/><path d="M24 30 v9 M30 30 v9 M36 30 v9" stroke="#151513" stroke-width="1.5"/><rect x="11" y="9" width="6" height="7" fill="#151513"/><rect x="43" y="9" width="6" height="7" fill="#151513"/>`},
   {id:'tv', label:'TV-vak', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2"/><rect x="14" y="20" width="32" height="19" rx="2" fill="#8a8a84" stroke="#151513" stroke-width="1.5"/><line x1="26" y1="42" x2="34" y2="42" stroke="#b08655" stroke-width="3" stroke-linecap="round"/>`},
+  {id:'nis', label:'Nis (wasbak)', svg:`<rect x="10" y="8" width="40" height="44" fill="none" stroke="#151513" stroke-width="2" stroke-dasharray="4 3"/><ellipse cx="30" cy="36" rx="13" ry="6" fill="#c9ced1" stroke="#151513" stroke-width="1.5"/><path d="M30 36 V20 q0 -5 6 -5" fill="none" stroke="#151513" stroke-width="2"/>`}
 ];
 
 let rows = [ {id:'r0', height:100, fixed:false}, {id:'r1', height:100, fixed:false} ]; // index0 = bottom
@@ -3186,6 +3197,7 @@ function renderCellEditorInner(backdrop, box){
   }
   if(cell.type==='kledinglift') inhoud += line2('Bediening', btns('liftmode', [['handmatig','Handmatig'],['elektrisch','Elektrisch']], (cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig'));
   html += group('Inhoud', inhoud);
+  if(cell.type === 'nis') html += group('Nis', `<p class="cs-hint" style="margin:0;">Open ruimte voor de wasbak, zonder kast. De kasten ernaast blijven staan. De breedte van de nis is de breedte van dit kastdeel (pas die aan bij stap 3). Wasbak en kraan zijn niet inbegrepen.</p>`);
   if(cell.type === 'tv'){
     const C = cols.length, maxW = Math.min(4, C);
     let tvHtml = '';
@@ -3206,7 +3218,7 @@ function renderCellEditorInner(backdrop, box){
     }
     html += group('TV-vak', tvHtml);
   }
-  let deur = cell.type === 'tv' ? '' : line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
+  let deur = (cell.type === 'tv' || cell.type === 'nis') ? '' : line2('Deur', btns('doorcount', [[0,'Geen'],[1,'1 deur'],[2,'2 deuren']], hasDoor ? nDoors : 0));
   if(hasDoor){
     if(nDoors === 1) deur += line2('Scharnier', btns('hinge', [['links','Links'],['rechts','Rechts']], dCell.hinge||'links'));
     // de deur kan over dit vak en de verdieping(en) eronder lopen
@@ -3758,11 +3770,11 @@ function initWalls(count){
 // hangen.
 function applyKeukenRowDefaults(){
   walls.forEach((w, idx) => {
-    const keepUpperRow = (selectedLayout === 'kookeiland' && idx === 0);
-    if(keepUpperRow) return;
-    w.rows = [ {id:uid('r'), height:100, fixed:false} ];
+    // de kasten achter het kookeiland (Hoofdopstelling): standaard 90 cm hoog en 1 verdieping (er kunnen er altijd bij)
+    const h0 = (selectedLayout === 'kookeiland' && idx === 0) ? 90 : 100;
+    w.rows = [ {id:uid('r'), height:h0, fixed:false} ];
     w.rowFixOrder = [];
-    w.lockedTotalHeight = 100;
+    w.lockedTotalHeight = h0;
     w.cells = {};
   });
   applyWallState(walls[activeWallIndex]);
@@ -4364,6 +4376,22 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
       hitbox.userData = { rowId: row.id, colId: col.id, wallIdx: wallIdxForHitbox, highlightMesh: hoverHighlight };
       cellGroup.add(hitbox);
       clickableHitboxes.push(hitbox);
+
+      // nis voor de wasbak: geen kast (geen dek/bodem/zijden/achterschot), alleen een spoelbak met kraan ter illustratie
+      if(cell.type==='nis'){
+        const steel = new THREE.MeshStandardMaterial({color:0xc9ced1, metalness:0.6, roughness:0.35});
+        const bowl = new THREE.Mesh(new THREE.BoxGeometry(Math.max(10, cw*0.6), 1.2, Math.max(10, cd*0.55)), steel);
+        bowl.position.set(cx, cy + rh/2 - 6, 0);
+        bowl.userData.noExport = true;
+        cellGroup.add(bowl);
+        const tapMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 14, 10), steel);
+        tapMesh.position.set(cx, cy + rh/2 - 6 + 7, -cd*0.25);
+        tapMesh.userData.noExport = true;
+        cellGroup.add(tapMesh);
+        group.add(cellGroup);
+        yAcc += rowHeightEff;
+        continue;
+      }
 
       // dek en bodem — lopen de volledige breedte en diepte door
       const capGeo = new THREE.BoxGeometry(cw, t, cd);
@@ -5367,6 +5395,7 @@ function wallPriceItems(){
       if(priceSpanInfo && priceSpanInfo.startIdx !== ci) continue; // opgeslokt door een eerdere kolom, niet apart meetellen
       const row = rows[ri], col = cols[ci];
       const cell = getCell(row.id, col.id);
+      if(cell.type === 'nis') continue; // een nis is open ruimte: geen kast, dus geen kosten
       let cw = priceSpanInfo ? widthOfColSpan(priceSpanInfo.startIdx, priceSpanInfo.endIdx) : col.width;
       const ovPrice = rowOverrideLayout(row.id);
       if(ovPrice && ovPrice[ci]) cw = ovPrice[ci].w;
@@ -5787,7 +5816,7 @@ function renderContentPanel(){
       if(!selectedCell) return;
       const chosen = getCell(selectedCell.rowId, selectedCell.colId);
       chosen.type = e.currentTarget.dataset.contenttype;
-      if(chosen.type === 'tv'){ chosen.door = false; chosen.doorSpan = 1; }
+      if(chosen.type === 'tv' || chosen.type === 'nis'){ chosen.door = false; chosen.doorSpan = 1; }
       render();
     });
   });
@@ -6523,6 +6552,7 @@ function quoteTypeText(cell){
   if(cell.type === 'roede-laden') return lbl + ' (roede + ' + (Math.max(1, Number(cell.options.drawers)||2)) + (drawerStyleOf(cell)==='binnen' ? ' binnenladen achter een deur)' : ' laden)');
   if(cell.type === 'plank-roede') return lbl + ' (1 plank + roede)';
   if(cell.type === 'tv') return 'Open tv-vak (tv niet inbegrepen)';
+  if(cell.type === 'nis') return 'Nis voor de wasbak (open ruimte, wasbak en kraan niet inbegrepen)';
   if(cell.type === 'kledinglift') return lbl + ' (' + ((cell.options && cell.options.liftMode === 'elektrisch') ? 'elektrisch' : 'handmatig') + ')';
   return lbl;
 }
