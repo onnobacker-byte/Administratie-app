@@ -5802,7 +5802,8 @@ function renderContentPanel(){
   hint.style.display = 'none';
   typeRow.style.display = 'flex';
   if(deselectBtn) deselectBtn.style.display = 'inline-flex';
-  typeRow.innerHTML = TYPES.map(t=>`
+  // de nis voor de wasbak is alleen een keukenoptie (of staat al ingesteld op dit vak)
+  typeRow.innerHTML = TYPES.filter(t => t.id !== 'nis' || projectType === 'keuken' || cell.type === 'nis').map(t=>`
     <button class="type-btn ${cell.type===t.id?'active':''}" data-contenttype="${t.id}" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;height:auto;">
       <svg width="42" height="42" viewBox="0 0 60 60">${t.svg}</svg>
       <span>${t.label}</span>
