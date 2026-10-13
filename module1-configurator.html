@@ -855,7 +855,7 @@
           <div class="type-row" id="worktopMasterWallRow" style="display:none;margin-bottom:16px;"></div>
           <div class="type-row" id="kookeilandSidesRow" style="display:none;margin-bottom:16px;"></div>
           <div class="panel">
-            <h2 class="section-title">Totale afmetingen</h2>
+            <h2 class="section-title" id="mainDimsTitle">Totale afmetingen</h2>
             <div class="stepper-row">
               <span class="lbl">Breedte</span>
               <div class="stepper">
@@ -899,6 +899,12 @@
             <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:4px;">De breedte wordt automatisch verdeeld in kastdelen van maximaal 60 cm, de hoogte over de verdiepingen. De diepte geldt voor de hele kast. In stap 3 kun je verdiepingen en kastdelen nog los aanpassen.</p>
           </div>
 
+          <div class="panel" id="islandSide2Panel" style="display:none;">
+            <h2 class="section-title" id="islandSide2Title">Kookeiland — kant 2: afmetingen</h2>
+            <div class="stepper-row"><span class="lbl">Breedte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="w" data-delta="-10" aria-label="Minder breed">−</button><div class="stepper-value"><input type="number" min="20" max="1000" id="isl2Width"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="w" data-delta="10" aria-label="Breder">+</button></div></div>
+            <div class="stepper-row"><span class="lbl">Hoogte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="h" data-delta="-10" aria-label="Lager">−</button><div class="stepper-value"><input type="number" min="20" max="400" id="isl2Height"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="h" data-delta="10" aria-label="Hoger">+</button></div></div>
+            <div class="stepper-row"><span class="lbl">Diepte</span><div class="stepper"><button type="button" class="stepper-btn" data-isl="d" data-delta="-5" aria-label="Minder diep">−</button><div class="stepper-value"><input type="number" min="20" max="100" id="isl2Depth"><span class="stepper-unit">cm</span></div><button type="button" class="stepper-btn" data-isl="d" data-delta="5" aria-label="Dieper">+</button></div></div>
+          </div>
           <div class="panel" id="worktopPanel" style="display:none;">
             <h2 class="section-title">Werkblad</h2>
             <div class="type-row" id="worktopRow">
@@ -2035,6 +2041,7 @@ function syncTotalInputs(){
   if(document.activeElement !== hInp) hInp.value = totalH;
   if(document.activeElement !== dInp) dInp.value = totalD;
 
+  try{ updateIslandDimsUI(); }catch(e){}
   const mlInp = document.getElementById('marginLeftInput');
   const mrInp = document.getElementById('marginRightInput');
   const mtInp = document.getElementById('marginTopInput');
@@ -3831,7 +3838,11 @@ function renderWallTabs(){
     else {
       el.style.display='flex';
       const labels = wallLabels();
-      el.innerHTML = labels.map((label,i)=>`<button class="type-btn ${i===activeWallIndex?'active':''}" data-wallidx="${i}">${label}</button>`).join('');
+      // kookeiland met 2 kanten: op stap 2 één tabblad "Kookeiland" (de afmetingen van beide kanten staan onder elkaar)
+      const mergeIsland = (id==='wallTabsRow' && islandTwoSided());
+      if(mergeIsland && wizardStep===2 && activeWallIndex===2){ switchWall(1); return; }
+      const shown = mergeIsland ? [0,1] : labels.map((l,i)=>i);
+      el.innerHTML = shown.map(i=>`<button class="type-btn ${(i===activeWallIndex || (mergeIsland && i===1 && activeWallIndex===2))?'active':''}" data-wallidx="${i}">${mergeIsland && i===1 ? 'Kookeiland' : labels[i]}</button>`).join('');
       el.querySelectorAll('[data-wallidx]').forEach(btn=>{
         btn.addEventListener('click', e=>switchWall(Number(e.target.dataset.wallidx)));
       });
@@ -5876,6 +5887,53 @@ function renderKeepingEditorFocus(){
   if(currentView==='plan' && renderer) setTimeout(()=>renderOrthoView('plan'), 0);
   calculatePrice();
 }
+
+
+// ---- Kookeiland met 2 kanten: de afmetingen van beide kanten staan onder elkaar (geen apart tabblad voor kant 2) ----
+function islandTwoSided(){ return selectedLayout==='kookeiland' && walls.length===3; }
+function islandOtherIdx(){ return activeWallIndex===1 ? 2 : 1; }
+function withIslandOther(fn){
+  const oi = islandOtherIdx();
+  const snap = captureWallState();
+  walls[activeWallIndex] = snap;
+  applyWallState(walls[oi]);
+  fn();
+  walls[oi] = captureWallState();
+  applyWallState(snap);
+  render();
+}
+function setIslandOther(kind, v){
+  if(!(v > 0)) return;
+  withIslandOther(() => {
+    if(kind==='w'){ lockedTotalWidth = Math.max(10, v); recomputeFillers(); }
+    else if(kind==='h'){ lockedTotalHeight = Math.max(10, v); rows.forEach(r => { r.fixed = false; }); rowFixOrder = []; recomputeRowFlex(); }
+    else { globalDepth = Math.max(10, v); cols.forEach(c => { c.depth = globalDepth; }); }
+  });
+}
+function updateIslandDimsUI(){
+  const pan = document.getElementById('islandSide2Panel'), mt = document.getElementById('mainDimsTitle');
+  if(!pan || !mt) return;
+  const on = islandTwoSided() && activeWallIndex >= 1;
+  pan.style.display = on ? '' : 'none';
+  if(selectedLayout==='kookeiland' && activeWallIndex===0) mt.textContent = 'Hoofdopstelling: afmetingen';
+  else if(on){
+    mt.textContent = 'Kookeiland — kant ' + activeWallIndex + ': afmetingen';
+    document.getElementById('islandSide2Title').textContent = 'Kookeiland — kant ' + islandOtherIdx() + ': afmetingen';
+    const o = walls[islandOtherIdx()];
+    const set = (id, v) => { const el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
+    set('isl2Width', Math.round(o.lockedTotalWidth*10)/10);
+    set('isl2Height', Math.round(o.lockedTotalHeight*10)/10);
+    set('isl2Depth', o.cols.length ? o.cols[0].depth : 60);
+  } else if(selectedLayout==='kookeiland') mt.textContent = 'Kookeiland: afmetingen';
+  else mt.textContent = 'Totale afmetingen';
+}
+document.querySelectorAll('[data-isl]').forEach(b => b.addEventListener('click', () => {
+  const o = walls[islandOtherIdx()]; if(!o) return;
+  const kind = b.dataset.isl, delta = Number(b.dataset.delta);
+  const cur = kind==='w' ? o.lockedTotalWidth : kind==='h' ? o.lockedTotalHeight : (o.cols[0] ? o.cols[0].depth : 60);
+  setIslandOther(kind, cur + delta);
+}));
+[['isl2Width','w'],['isl2Height','h'],['isl2Depth','d']].forEach(([id,k]) => document.getElementById(id).addEventListener('change', e => setIslandOther(k, parseNum(e.target.value))));
 
 document.getElementById('totalWidthInput').addEventListener('change', e => applyTotalWidth(parseNum(e.target.value)||100));
 document.getElementById('totalHeightInput').addEventListener('change', e => applyTotalHeight(parseNum(e.target.value)||100));
