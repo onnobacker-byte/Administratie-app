@@ -3429,6 +3429,7 @@ let scene, camera, renderer, modelGroup;
 // een kast met gelijke modules door het perspectief ongelijk (de dichtstbijzijnde module oogt breder).
 let rotY = 0, rotX = -0.12, zoomDist = null;
 let lastCanvas3dW = 0, lastCanvas3dH = 0;
+let camPanX = 0, camPanY = 0; // verschuiving van de camera, zodat je kunt inzoomen op de plek waar de muis staat
 let userZoomed = false; // true zodra de gebruiker zelf in-/uitgezoomd heeft: dan past de camera niet meer automatisch mee
 let lastFitSpans = null;
 // Smalle beeldhoek (30° i.p.v. 45°) met een navenant grotere afstand: dezelfde uitsnede, maar veel
@@ -3525,8 +3526,17 @@ function init3d(){
       return;
     }
     userZoomed = true;
+    const dOld = zoomDist;
     zoomDist *= (1 + e.deltaY*0.0035); // sneller in-/uitzoomen dan de oude 0.001 (voelde erg traag aan)
     zoomDist = Math.max(80, Math.min(4500, zoomDist));
+    // inzoomen op de plek waar de muis staat: het punt onder de muis blijft onder de muis
+    const rect = canvas.getBoundingClientRect();
+    if(rect.width > 0 && rect.height > 0){
+      const nx = ((e.clientX - rect.left)/rect.width)*2 - 1, ny = -(((e.clientY - rect.top)/rect.height)*2 - 1);
+      const tanH = Math.tan(CAMERA_FOV*Math.PI/360), asp = rect.width/rect.height;
+      camPanX += nx*asp*tanH*(dOld - zoomDist);
+      camPanY += ny*tanH*(dOld - zoomDist);
+    }
   }, {passive:false});
 
   // knijpgebaar (pinch-to-zoom) voor mobiel, met twee vingers
@@ -4522,8 +4532,8 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
       // opvulstrook: in de hoekkast van de doorlopende wand, naast de deur aan de kant van de andere wand
       if(fillerHere){
         // de deur(en) van de hoekkast eindigen vóór de voorkant van de andere wand (daar zit de opvullat)
-        doorSpanWidth -= (cornerOtherDepth + 3);
-        if(reverseColOrder) doorLeftX += (cornerOtherDepth + 3);
+        doorSpanWidth -= (cornerOtherDepth + cornerF);
+        if(reverseColOrder) doorLeftX += (cornerOtherDepth + cornerF);
       }
       const ovDoor3d = rowOverrideLayout(rows[span.startIdx].id);
       if(ovDoor3d && ovDoor3d[ci]){
@@ -4531,15 +4541,15 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         doorLeftX = reverseColOrder ? (baseX + totalWidthCm - ovDoor3d[ci].off - ovDoor3d[ci].w) : (baseX + ovDoor3d[ci].off);
       }
       for(let d=0; d<doors; d++){
-        const dw = doorSpanWidth/doors - 2;
+        const dw = doorSpanWidth/doors - 0.3; // 3 mm naad tussen de deuren
         const dx = doorLeftX + (doorSpanWidth/doors)*(d+0.5);
         const doorMat = new THREE.MeshStandardMaterial({color:mat.color, roughness:0.4, emissive:0x000000});
         // in het LED-voorbeeld (stap 6) zit een dichte deur letterlijk voor de lichtstrip — die stap
         // gaat juist over het zien van die strip, dus daar maken we de deur even doorzichtig
         if(ledPreviewActive){ doorMat.transparent = true; doorMat.opacity = 0.2; }
-        const door = new THREE.Mesh(new THREE.BoxGeometry(dw, spanH-3, 2), doorMat);
+        const door = new THREE.Mesh(new THREE.BoxGeometry(dw, spanH-0.3, 1.8), doorMat);
         door.material.color.multiplyScalar(0.9);
-        door.position.set(dx, centerY, frontZ+2);
+        door.position.set(dx, centerY, frontZ+0.9);
         group.add(door);
         const doorEdges = new THREE.LineSegments(new THREE.EdgesGeometry(door.geometry), new THREE.LineBasicMaterial({color:0x151513, transparent:true, opacity: ledPreviewActive ? 0.25 : 0.6}));
         doorEdges.position.copy(door.position);
@@ -4559,14 +4569,14 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           const handleWorldY = (span.handleY===null || span.handleY===undefined)
             ? (horizHandle ? centerY + spanH/2 - 5 : centerY)
             : Math.max(centerY-spanH/2+5, Math.min(centerY+spanH/2-5, centerY + spanH/2 - span.handleY));
-          handle.position.set(horizHandle ? dx : handleX, handleWorldY, frontZ+3.5);
+          handle.position.set(horizHandle ? dx : handleX, handleWorldY, frontZ+2.4);
           group.add(handle);
         }
       }
     });
     if(fillerHere){
       // de opvullat sluit de hoekkast aan de voorkant af waar de andere wand tegenaan komt (die schuift een deurdikte op)
-      const fW = cornerOtherDepth + 3;
+      const fW = cornerOtherDepth + cornerF;
       const fx = reverseColOrder ? colStartX[ci] + fW/2 : colStartX[ci] + col.width - fW/2;
       const fgeo = new THREE.BoxGeometry(fW, totalStackHeightCm, cornerF);
       const fm = new THREE.Mesh(fgeo, new THREE.MeshStandardMaterial({color:cornerFillerColor(), roughness:0.4}));
@@ -5042,8 +5052,9 @@ function animate3d(){
     modelGroup.rotation.y = rotY;
     modelGroup.rotation.x = rotX;
     const d = zoomDist || 400;
-    camera.position.set(0, cam3dTargetY, d);
-    camera.lookAt(0, cam3dTargetY, 0);
+    if(!userZoomed){ camPanX = 0; camPanY = 0; }
+    camera.position.set(camPanX, cam3dTargetY + camPanY, d);
+    camera.lookAt(camPanX, cam3dTargetY + camPanY, 0);
   }
   renderer.render(scene, camera);
 }
@@ -5424,7 +5435,7 @@ function wallPriceItems(){
       const fh = rows.reduce((s,r)=>s+r.height,0), fm = (cells[Object.keys(cells).find(k=>cells[k] && cells[k].door)||''] || {});
       const mat = fm.doorMaterial || fm.material || defMatId();
       const e = fh; edgebandCm += e;
-      extras.push({ key:'hoekstrip', amount: ((cornerOtherDepthForPrice()+3)*fh/10000) * (materialPrices[mat] || 0) * marginMult + e * ebRate });
+      extras.push({ key:'hoekstrip', amount: ((cornerOtherDepthForPrice()+CORNER_FILLER_CM)*fh/10000) * (materialPrices[mat] || 0) * marginMult + e * ebRate });
     }
   }
   if(plintHeightMm > 0) extras.push({ key:'plint', amount: (totalW/100) * (otherPrices.pricePlint || 0) * partsMargin });
@@ -6521,7 +6532,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
       amount: extraOf(items, key) + (islandBoth && itemsOther ? extraOf(itemsOther, keyOther) : 0) });
   });
   if(extraOf(items, 'hoekstrip') > 0){
-    d.extra.push({ title: 'Opvulstrook in de hoek', size: quoteNum(CORNER_FILLER_CM) + ' cm dik x ' + quoteNum(cornerOtherDepthForPrice()+3) + ' cm breed x ' + quoteNum(rows.reduce((s,r)=>s+r.height,0)) + ' cm hoog (naast de deur van de hoekkast)', material: 'kleur van de deuren', details: ['Zorgt dat de deuren in de hoek kunnen openen'], amount: extraOf(items, 'hoekstrip') });
+    d.extra.push({ title: 'Opvulstrook in de hoek', size: quoteNum(CORNER_FILLER_CM) + ' cm dik x ' + quoteNum(cornerOtherDepthForPrice()+CORNER_FILLER_CM) + ' cm breed x ' + quoteNum(rows.reduce((s,r)=>s+r.height,0)) + ' cm hoog (naast de deur van de hoekkast)', material: 'kleur van de deuren', details: ['Zorgt dat de deuren in de hoek kunnen openen'], amount: extraOf(items, 'hoekstrip') });
   }
   d.subtotal = d.modules.reduce((s,m)=>s+m.price, 0) + d.extra.reduce((s,e)=>s+e.amount, 0);
   return d;
