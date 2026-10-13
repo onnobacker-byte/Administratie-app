@@ -590,7 +590,34 @@
     .qs-table tr{page-break-inside:avoid;}
     @page{size:A4;margin:16mm;}
   }
-  </style>
+  
+  /* KNOPPEN: duidelijk herkenbaar als knop (zandkleur met rand en schaduw, i.p.v. wit op wit) */
+  #configuratorEmbed .type-btn:not(.active):not(:disabled),
+  #configuratorEmbed .view-btn:not(.active),
+  #configuratorEmbed .add-btn.secondary,
+  #configuratorEmbed .btn.secondary,
+  #configuratorEmbed .modal-close-btn {
+    background:#ece3d1; color:var(--ink); font-weight:600;
+    border:1.5px solid rgba(21,21,19,0.45);
+    box-shadow:0 2px 0 rgba(21,21,19,0.18);
+    cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, background .15s ease, border-color .15s ease;
+  }
+  #configuratorEmbed .type-btn:not(.active):not(:disabled):hover,
+  #configuratorEmbed .view-btn:not(.active):hover,
+  #configuratorEmbed .add-btn.secondary:hover,
+  #configuratorEmbed .btn.secondary:hover,
+  #configuratorEmbed .modal-close-btn:hover {
+    background:#e0cfa9; border-color:var(--oak-dark); transform:translateY(-1px); box-shadow:0 3px 0 rgba(21,21,19,0.22);
+  }
+  #configuratorEmbed .type-btn:not(.active):not(:disabled):active,
+  #configuratorEmbed .view-btn:not(.active):active,
+  #configuratorEmbed .add-btn.secondary:active,
+  #configuratorEmbed .btn.secondary:active {transform:translateY(1px);box-shadow:none;}
+  #configuratorEmbed .type-btn.active, #configuratorEmbed .view-btn.active {box-shadow:0 2px 0 rgba(21,21,19,0.35);}
+  #configuratorEmbed .add-btn:not(.secondary), #configuratorEmbed .btn:not(.secondary) {box-shadow:0 2px 0 rgba(21,21,19,0.35);}
+  #configuratorEmbed .stepper-btn {background:#ece3d1;}
+  #configuratorEmbed .wizard-dot:not(.active):not(.done):not(:disabled) {background:#ece3d1;border-color:rgba(21,21,19,0.45);box-shadow:0 2px 0 rgba(21,21,19,0.18);}
+</style>
 </head>
 <body>
 
