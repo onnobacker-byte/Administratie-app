@@ -3772,10 +3772,13 @@ function initWalls(count){
 function applyKeukenRowDefaults(){
   walls.forEach((w, idx) => {
     // de kasten achter het kookeiland (Hoofdopstelling): standaard 90 cm hoog en 1 verdieping (er kunnen er altijd bij)
-    const h0 = (selectedLayout === 'kookeiland' && idx === 0) ? 90 : 100;
-    w.rows = [ {id:uid('r'), height:h0, fixed:false} ];
+    const h0 = 90; // standaard werkhoogte van een keuken
+    // een keuken heeft standaard een werkblad (4 cm) op de onderste verdieping; de totale hoogte is dan de werkhoogte
+    const bladDikte = (w.worktop && w.worktop.thicknessCm) || 4;
+    w.rows = [ {id:uid('r'), height:h0 - bladDikte, fixed:false} ];
     w.rowFixOrder = [];
     w.lockedTotalHeight = h0;
+    if(w.worktop){ w.worktop.enabled = true; w.worktop.afterRowIndex = 0; }
     w.cells = {};
   });
   applyWallState(walls[activeWallIndex]);
@@ -6471,7 +6474,7 @@ function renderWorktopExtra(){
       <div class="row-item"><span class="lbl" style="width:100px;">Links</span><input type="number" min="0" max="10" step="0.5" id="worktopOverhangLeft" value="${worktop.overhangLeftCm||0}"> cm</div>
       <div class="row-item"><span class="lbl" style="width:100px;">Rechts</span><input type="number" min="0" max="10" step="0.5" id="worktopOverhangRight" value="${worktop.overhangRightCm||0}"> cm</div>
     </div>
-    <div class="row-item" style="margin-top:10px;"><span class="lbl" style="width:auto;">Op verdieping</span><input type="number" min="1" max="${rows.length}" step="1" id="worktopAfterRow" value="${worktop.afterRowIndex+1}"> (welke verdieping zit eronder)</div>
+    <div style="margin-top:10px;"><span class="lbl" style="display:block;margin-bottom:6px;">Het blad ligt op verdieping</span><div class="type-row" id="worktopAfterRowBtns">${rows.map((r,i)=>`<button type="button" class="type-btn ${i===Math.min(worktop.afterRowIndex||0, rows.length-1)?'active':''}" data-wtrow="${i}">${i+1}${i===0?' (onderste)':''}</button>`).join('')}</div><span class="cs-hint" style="font-size:11px;">de kasten onder het blad plus plint en blad vormen de werkhoogte</span></div>
     <span class="lbl" style="display:block;margin-top:14px;margin-bottom:6px;">Materiaal werkblad (ook te kiezen in stap 5)</span>
     <div class="swatch-row" id="worktopSwatchRow"></div>
   `;
@@ -6481,7 +6484,10 @@ function renderWorktopExtra(){
   document.getElementById('worktopOverhangBack').addEventListener('input', e=>{ worktop.overhangBackCm=parseNum(e.target.value)||0; if(renderer) build3dModel(); renderCanvas2d(); });
   document.getElementById('worktopOverhangLeft').addEventListener('input', e=>{ worktop.overhangLeftCm=parseNum(e.target.value)||0; if(renderer) build3dModel(); renderCanvas2d(); });
   document.getElementById('worktopOverhangRight').addEventListener('input', e=>{ worktop.overhangRightCm=parseNum(e.target.value)||0; if(renderer) build3dModel(); renderCanvas2d(); });
-  document.getElementById('worktopAfterRow').addEventListener('input', e=>{ worktop.afterRowIndex=Math.max(0,Math.min(rows.length-1,(parseNum(e.target.value)||1)-1)); if(renderer) build3dModel(); renderCanvas2d(); });
+  document.querySelectorAll('#worktopAfterRowBtns [data-wtrow]').forEach(btn=>btn.addEventListener('click', e=>{
+    worktop.afterRowIndex = Number(e.currentTarget.dataset.wtrow);
+    renderWorktopExtra(); if(renderer) build3dModel(); renderCanvas2d(); calculatePrice();
+  }));
   const swatchRow = document.getElementById('worktopSwatchRow');
   swatchRow.innerHTML = MATERIALS.map(m=>`<button class="swatch-btn ${worktop.material===m.id?'active':''}" style="background:#${m.color.toString(16).padStart(6,'0')};" data-worktopmat="${m.id}" title="${m.name}"></button>`).join('');
   swatchRow.querySelectorAll('[data-worktopmat]').forEach(btn=>{
