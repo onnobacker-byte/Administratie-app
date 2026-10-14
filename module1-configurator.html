@@ -3503,7 +3503,7 @@ function renderCellEditorInner(backdrop, box){
     const tvInp = (attr, v) => `<input type="number" min="10" step="1" value="${v}" ${attr} style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`;
     tvHtml += line2('Breedte van de tv', tvInp('data-tvw="1"', Math.max(10, Math.round(spanWidthCm - 10))));
     tvHtml += line2('Hoogte van de tv', tvInp('data-tvh="1"', Math.max(10, Math.round(effHeightForThisCell - 15))));
-    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Het tv-vak is automatisch 5 cm groter dan de tv aan de zijkanten en bovenkant, en 10 cm groter aan de onderkant. Nu: <strong>${Math.round(spanWidthCm)} x ${Math.round(effHeightForThisCell)} cm</strong>. De kasten eromheen passen zich vanzelf aan; ${rows.length > 1 ? 'de andere verdiepingen verdelen de rest van de hoogte' : 'bij 1 verdieping wordt de hele kast zo hoog'}${colSpan < C ? ', de andere kastdelen verdelen de rest van de breedte' : ''}.</p>`;
+    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Het tv-vak is automatisch 5 cm groter dan de tv aan de zijkanten en bovenkant, en 10 cm groter aan de onderkant. Nu: <strong>${Math.round(spanWidthCm)} x ${Math.round(effHeightForThisCell)} cm</strong>. De kast wordt automatisch zo breed en hoog als nodig is; de andere modules houden hun eigen maten.</p>`;
     if(colSpan < C){
       const midStart = (C - colSpan) / 2;
       const canMid = Number.isInteger(midStart);
@@ -3556,17 +3556,17 @@ function renderCellEditorInner(backdrop, box){
     const applyTvDims = () => {
       const w = parseNum(tvWInp.value), h = parseNum(tvHInp.value);
       if(!(w > 0) || !(h > 0)) return;
-      if(colSpan < cols.length) setTvVakWidthCm(cIdx, colSpan, w + 10);
+      // De kast groeit of krimpt mee met het tv-vak: alleen dit vak verandert, de andere modules houden hun eigen maten.
+      const newW = Math.max(20*colSpan, w + 10), curW = widthOfColSpan(cIdx, cIdx + colSpan - 1);
+      cols.forEach((c, i) => { c.isFiller = false; if(i >= cIdx && i < cIdx + colSpan) c.width = newW / colSpan; });
+      rows.forEach(r => cols.forEach(c => { const cl = getCell(r.id, c.id); if(cl.widthCm) cl.widthCm = null; }));
+      lockedTotalWidth = Math.max(10, lockedTotalWidth + (newW - curW));
       const Hmod = Math.max(20, h + 15);
-      if(rows.length >= 2){
-        cols.forEach(c => clearRowOverride(c.id, row.id));
-        row.height = Hmod; row.fixed = true;
-        rowFixOrder = rowFixOrder.filter(id => id !== row.id); rowFixOrder.push(row.id);
-        recomputeRowFlex();
-      } else {
-        lockedTotalHeight = Hmod + plintHeightCm() + marginTopCm + (worktop.enabled ? worktop.thicknessCm : 0);
-        rows[0].fixed = false; rowFixOrder = []; recomputeRowFlex();
-      }
+      cols.forEach(c => clearRowOverride(c.id, row.id));
+      rows.forEach(r => { r.fixed = true; rowFixOrder = rowFixOrder.filter(id => id !== r.id); rowFixOrder.push(r.id); });
+      row.height = Hmod;
+      lockedTotalHeight = rows.reduce((sum, r) => sum + r.height, 0) + plintHeightCm() + marginTopCm + (worktop.enabled ? worktop.thicknessCm : 0);
+      recomputeRowFlex();
       render();
     };
     [tvWInp, tvHInp].forEach(inp => {
