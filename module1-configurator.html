@@ -2142,17 +2142,143 @@ function vSumHeight(ri, ci){
 }
 function normalizeVSpans(){
   for(let ci=0; ci<cols.length; ci++){
-    let covered = -1;
+    let covered = -1, ownerW = 1;
     for(let ri=0; ri<rows.length; ri++){
       const cell = getCell(rows[ri].id, cols[ci].id);
-      if(ri <= covered){ cell.heightSpan = 1; cell.door = false; cell.doorSpan = 1; continue; }
+      if(ri <= covered){ cell.heightSpan = 1; cell.door = false; cell.doorSpan = 1; cell.widthSpan = ownerW; continue; }
       let len = Math.max(1, Math.min(Number(cell.heightSpan)||1, rows.length - ri));
-      if(len > 1 && (Number(cell.widthSpan)||1) > 1) len = 1;
+      ownerW = Math.max(1, Math.min(Number(cell.widthSpan)||1, cols.length - ci));
       cell.heightSpan = len;
       if(len > 1 && cell.door) cell.doorSpan = len;
       covered = ri + len - 1;
     }
   }
+}
+
+// ---- Een module opdelen zonder de rest van de kast te veranderen ----
+// De kast is een raster van verdiepingen x kastdelen. Een extra verdieping (of kastdeel) in maar 1 module betekent: er komt
+// een extra rij (of kolom) in het raster, en alle andere modules die daar doorheen lopen worden samengevoegd, zodat die
+// er nog precies hetzelfde uitzien.
+const cloneCellData = c => JSON.parse(JSON.stringify(c));
+function clearAllRowParts(){ rows.forEach(r => { r.parts = null; r.partsSig = null; }); }
+function canSplitModule(){ return !rows.some(r => r.tv); }
+
+// rijen: splits de module (rijen a..b, kolom cA) in een onderste en een bovenste helft, op de helft van de hoogte
+function splitModuleVertically(a, b, cA){
+  const col = cols[cA];
+  const eff = getEffectiveRowHeights(col);
+  let H = 0; for(let r=a; r<=b; r++) H += eff[r];
+  const half = H/2;
+  if(half < 10) return false;
+  let cum = 0, boundary = -1, kIns = -1, f = 0.5;
+  for(let r=a; r<=b; r++){
+    if(Math.abs(cum + eff[r] - half) < 0.5 && r < b){ boundary = r; break; }
+    if(cum + eff[r] > half){ kIns = r; f = (half - cum) / eff[r]; break; }
+    cum += eff[r];
+  }
+  const wSp = Math.max(1, Math.min(Number(getCell(rows[a].id, col.id).widthSpan)||1, cols.length - cA));
+  const ownerOld = getCell(rows[a].id, col.id);
+  const ownerData = cloneCellData(ownerOld);
+  const resetCell = c => { c.type = 'open'; c.door = false; c.doorSpan = 1; c.heightSpan = 1; };
+  if(boundary >= 0){
+    const upper = getCell(rows[boundary+1].id, col.id);
+    Object.assign(upper, cloneCellData(ownerData), { heightSpan: b - boundary, widthCm: null });
+    for(let r=a+1; r<=boundary; r++) resetCell(getCell(rows[r].id, col.id));
+    for(let r=boundary+2; r<=b; r++) resetCell(getCell(rows[r].id, col.id));
+    ownerOld.heightSpan = boundary - a + 1; ownerOld.widthCm = null;
+    ownerOld.doorSpan = ownerOld.door ? ownerOld.heightSpan : 1; upper.doorSpan = upper.door ? upper.heightSpan : 1;
+    return true;
+  }
+  // geen rijgrens in het midden: splits de rij waar het midden in valt, in twee rijen (de hoogte van de kast blijft gelijk)
+  const k = kIns;
+  const kRow = rows[k];
+  const info = cols.map((c, ci) => { const s0 = vOwnerOf(k, ci); return { s: s0, len: vSpanLen(s0, ci) }; });
+  const upperRow = { id: uid('r'), height: kRow.height * (1 - f), fixed: true };
+  kRow.height = kRow.height * f; kRow.fixed = true;
+  rows.splice(k+1, 0, upperRow);
+  [kRow.id, upperRow.id].forEach(id => { rowFixOrder = rowFixOrder.filter(x => x !== id); rowFixOrder.push(id); });
+  cols.forEach((c, ci) => {
+    const lowerCell = getCell(kRow.id, c.id);
+    cells[cellKey(upperRow.id, c.id)] = cloneCellData(lowerCell);
+    if(c.rowOverrides && c.rowOverrides[kRow.id] !== undefined){ const o = c.rowOverrides[kRow.id]; c.rowOverrides[kRow.id] = o*f; c.rowOverrides[upperRow.id] = o*(1-f); }
+    if(c.depthOverrides && c.depthOverrides[kRow.id] !== undefined) c.depthOverrides[upperRow.id] = c.depthOverrides[kRow.id];
+  });
+  // deuren die over meerdere losse vakken lopen en deze rij raken, worden 1 rij hoger
+  cols.forEach((c, ci) => {
+    for(let j=0; j<k; j++){
+      const cj = getCell(rows[j].id, c.id);
+      if(cj.door && (Number(cj.doorSpan)||1) > 1 && j + cj.doorSpan - 1 >= k && !(Number(cj.heightSpan) > 1)) cj.doorSpan = cj.doorSpan + 1;
+    }
+  });
+  // andere modules die door deze rij lopen blijven 1 module (nu over beide helften)
+  const inModule = ci => ci >= cA && ci < cA + wSp;
+  cols.forEach((c, ci) => {
+    if(inModule(ci)) return;
+    const { s: s0, len } = info[ci];
+    getCell(rows[s0].id, c.id).heightSpan = len + 1;
+  });
+  // de gekozen module zelf: onderste deel (rijen a..k) en bovenste deel (rijen k+1..b+1)
+  const lowerLen = k - a + 1, upperLen = b - k + 1;
+  const lowerOwner = getCell(rows[a].id, col.id), upperOwner = getCell(rows[k+1].id, col.id);
+  Object.assign(upperOwner, cloneCellData(ownerData), { heightSpan: upperLen, widthCm: null });
+  for(let r=a+1; r<=k; r++) resetCell(getCell(rows[r].id, col.id));
+  for(let r=k+2; r<=b+1; r++) resetCell(getCell(rows[r].id, col.id));
+  lowerOwner.heightSpan = lowerLen; lowerOwner.widthCm = null;
+  lowerOwner.doorSpan = lowerOwner.door ? lowerLen : 1; upperOwner.doorSpan = upperOwner.door ? upperLen : 1;
+  for(let ci=cA+1; ci<cA+wSp; ci++){ getCell(rows[k+1].id, cols[ci].id).widthSpan = 1; }
+  if(worktop.afterRowIndex > k) worktop.afterRowIndex += 1; else if(worktop.afterRowIndex === k && worktop.enabled) worktop.afterRowIndex = k + 1;
+  clearAllRowParts();
+  recomputeRowFlex();
+  return true;
+}
+
+// kastdelen: splits de module (kolommen cA..cB, rijen a..b) in een linker en rechter helft, op de helft van de breedte
+function splitModuleHorizontally(a, b, cA, cB){
+  let W = 0; for(let c=cA; c<=cB; c++) W += cols[c].width;
+  const half = W/2;
+  if(half < 10) return false;
+  let cum = 0, boundary = -1, kIns = -1, f = 0.5;
+  for(let c=cA; c<=cB; c++){
+    if(Math.abs(cum + cols[c].width - half) < 0.5 && c < cB){ boundary = c; break; }
+    if(cum + cols[c].width > half){ kIns = c; f = (half - cum) / cols[c].width; break; }
+    cum += cols[c].width;
+  }
+  const rowA = rows[a];
+  const ownerOld = getCell(rowA.id, cols[cA].id);
+  const ownerData = cloneCellData(ownerOld);
+  const hSp = Math.max(1, Math.min(Number(ownerOld.heightSpan)||1, rows.length - a));
+  if(boundary >= 0){
+    const right = getCell(rowA.id, cols[boundary+1].id);
+    Object.assign(right, cloneCellData(ownerData), { widthSpan: cB - boundary, widthCm: null, heightSpan: hSp });
+    ownerOld.widthSpan = boundary - cA + 1; ownerOld.widthCm = null;
+    for(let c=cA+1; c<=boundary; c++) getCell(rowA.id, cols[c].id).widthSpan = 1;
+    for(let c=boundary+2; c<=cB; c++) getCell(rowA.id, cols[c].id).widthSpan = 1;
+    clearAllRowParts();
+    return true;
+  }
+  const k = kIns;
+  const kCol = cols[k];
+  const spansPerRow = rows.map(r => computeColSpans(r.id));
+  const newCol = { id: uid('c'), width: kCol.width * (1 - f), depth: kCol.depth, isFiller: false };
+  if(kCol.rowOverrides) newCol.rowOverrides = Object.assign({}, kCol.rowOverrides);
+  if(kCol.depthOverrides) newCol.depthOverrides = Object.assign({}, kCol.depthOverrides);
+  kCol.width = kCol.width * f; kCol.isFiller = false;
+  cols.splice(k+1, 0, newCol);
+  rows.forEach(r => { cells[cellKey(r.id, newCol.id)] = Object.assign(cloneCellData(getCell(r.id, kCol.id)), { widthSpan: 1, widthCm: null }); });
+  rows.forEach((r, ri) => {
+    if(ri >= a && ri <= b) return; // de gekozen module
+    const sp = spansPerRow[ri].find(x => x.startIdx <= k && k <= x.endIdx);
+    if(!sp) return;
+    getCell(r.id, cols[sp.startIdx].id).widthSpan = (sp.endIdx - sp.startIdx + 1) + 1;
+  });
+  // de gekozen module: linkerdeel (kolommen cA..k) en rechterdeel (kolommen k+1..cB+1)
+  const leftOwner = getCell(rowA.id, cols[cA].id), rightOwner = getCell(rowA.id, cols[k+1].id);
+  Object.assign(rightOwner, cloneCellData(ownerData), { widthSpan: cB - k + 1, widthCm: null, heightSpan: hSp });
+  leftOwner.widthSpan = k - cA + 1; leftOwner.widthCm = null;
+  for(let c=cA+1; c<=k; c++) getCell(rowA.id, cols[c].id).widthSpan = 1;
+  for(let c=k+2; c<=cB+1; c++) getCell(rowA.id, cols[c].id).widthSpan = 1;
+  clearAllRowParts();
+  return true;
 }
 // Vrije breedte PER MODULE: `cell.widthCm` (alleen op het startvak van een vak in die rij). Geeft voor een
 // rij met zo'n afwijking de breedte + positie (cm vanaf de linkerkant, in kolomvolgorde) van elk vak
@@ -2656,10 +2782,10 @@ function renderCanvas2d(targetId){
       let xAcc = colPixelLeft[span.startIdx];
       const ov2d = rowOverrideLayout(row.id);
       const ovCell2d = ov2d && ov2d[span.startIdx];
-      if(!isMerged && isVSwallowed(ri, span.startIdx)) return; // samengevoegd in de module eronder
+      if(isVSwallowed(ri, span.startIdx)) return; // samengevoegd in de module eronder
       let rh = colRowPixelH[span.startIdx][ri];
       let rowY = colRowPixelTop[span.startIdx][ri];
-      if(!isMerged){
+      {
         const vLen = vSpanLen(ri, span.startIdx);
         if(vLen > 1){ rh = 0; for(let k=0; k<vLen; k++) rh += colRowPixelH[span.startIdx][ri+k]; rowY = colRowPixelTop[span.startIdx][ri+vLen-1]; }
       }
@@ -3221,7 +3347,7 @@ function renderLayoutEditor(){
   const cell = getCell(selectedCell.rowId, selectedCell.colId);
   const rIdx = rows.findIndex(r=>r.id===selectedCell.rowId), cIdx = cols.findIndex(c=>c.id===selectedCell.colId);
   const row = rows[rIdx], col = cols[cIdx];
-  const effH = getEffectiveRowHeights(col)[rIdx], effD = getEffectiveDepth(col, row.id);
+  const effH = vSumHeight(rIdx, cIdx), effD = getEffectiveDepth(col, row.id);
   const colSpan = Math.max(1, Math.min(Number(cell.widthSpan)||1, cols.length - cIdx));
   const spanW = widthOfColSpan(cIdx, cIdx+colSpan-1);
   const rowOvr = rowOverrideLayout(row.id);
@@ -3250,6 +3376,13 @@ function renderLayoutEditor(){
   const cornerLayout2 = walls.length===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling');
   const primaryIdx2 = (selectedLayout==='hoek-rechts') ? 1 : 0;
   const mirrored = (currentView==='3d' || currentView==='room') && ((cornerLayout2 && activeWallIndex !== primaryIdx2) || (selectedLayout==='kookeiland' && walls.length===3 && activeWallIndex===2));
+  const canSplit = canSplitModule();
+  const splitHtml = `<div class="cs-group" style="margin-top:10px;"><div class="cs-group-title">Alleen in deze module erbij</div>
+      <div class="cs-opts">
+        <button type="button" class="type-btn sm" id="spFloor" ${canSplit?'':'disabled'}>+ verdieping erbij</button>
+        <button type="button" class="type-btn sm" id="spRow" ${canSplit?'':'disabled'}>+ rij (kastdeel) erbij</button>
+      </div>
+      <p class="cs-hint" style="margin:6px 0 0;">${canSplit ? 'De module wordt in tweeën gedeeld; de rest van de kast blijft precies zoals hij was.' : 'Dit kan niet bij een kast met een TV-vak in de indeling.'}</p></div>`;
   const mb = (id, label, ok, why) => `<button type="button" class="type-btn sm" id="${id}" ${ok?'':'disabled title="'+why+'"'}>${label}</button>`;
   const mergeHtml = `<div class="cs-group" style="margin-top:10px;"><div class="cs-group-title">Samenvoegen tot 1 module</div>
       <div class="cs-opts">
@@ -3267,9 +3400,10 @@ function renderLayoutEditor(){
        <button type="button" class="add-btn secondary" id="layoutRestoreBtn">Module terugzetten</button>`
     : fld('layoutW', 'Breedte', r1(widthNow), (cell.widthCm>0 ? '<button class="mini-remove" id="layoutWReset">terugzetten</button>' : ''), !freeWidthPossible)
       + (freeWidthPossible ? '' : '<p class="cs-hint" style="margin:-6px 0 10px;">Er is maar 1 kastdeel op deze verdieping; de breedte pas je aan bij Afmetingen (stap 2).</p>')
-      + fld('layoutH', 'Hoogte', r1(effH), (col.rowOverrides && col.rowOverrides[row.id]!==undefined ? '<button class="mini-remove" id="layoutHReset">terugzetten</button>' : ''), false)
+      + fld('layoutH', 'Hoogte', r1(effH), (col.rowOverrides && col.rowOverrides[row.id]!==undefined && vSpanLen(rIdx, cIdx)===1 ? '<button class="mini-remove" id="layoutHReset">terugzetten</button>' : ''), vSpanLen(rIdx, cIdx) > 1)
+      + (vSpanLen(rIdx, cIdx) > 1 ? '<p class="cs-hint" style="margin:-6px 0 10px;">Deze module loopt over meerdere verdiepingen; de hoogte volgt die verdiepingen (pas ze aan in de lijst hieronder).</p>' : '')
       + fld('layoutD', 'Diepte', r1(effD), (col.depthOverrides && col.depthOverrides[row.id]!==undefined ? '<button class="mini-remove" id="layoutDReset">terugzetten</button>' : ''), false)
-      + mergeHtml
+      + mergeHtml + splitHtml
       + `<button type="button" class="add-btn secondary" id="layoutRemoveBtn" style="margin-top:6px;">Deze module verwijderen</button>`);
   const on = (id, ev, fn) => { const el = box.querySelector('#'+id); if(el) el.addEventListener(ev, fn); };
   on('layoutW','change', e=>{ const v = parseNum(e.target.value); getCell(selectedCell.rowId, selectedCell.colId).widthCm = (v>0) ? Math.max(10, v) : null; render(); });
@@ -3306,6 +3440,9 @@ function renderLayoutEditor(){
   on('mgRight','click', mirrored ? doPrev : doNext);
   on('mgLeft','click', mirrored ? doNext : doPrev);
   on('mgUnH','click', ()=>{ clearWidthSpan(row.id, col.id); row.parts = null; row.partsSig = null; render(); });
+  const afterSplit = ok => { if(!ok){ alert('Deze module is te klein om nog verder te delen.'); return; } selectedCell = { rowId: row.id, colId: col.id }; render(); };
+  on('spFloor','click', ()=>{ const ok = splitModuleVertically(rIdx, rIdx + hsN - 1, cIdx); afterSplit(ok); });
+  on('spRow','click', ()=>{ const ok = splitModuleHorizontally(rIdx, rIdx + hsN - 1, cIdx, cIdx + colSpan - 1); afterSplit(ok); });
   on('layoutRemoveBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'leeg'; c.door = false; c.doorSpan = 1; render(); });
   on('layoutRestoreBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'open'; render(); });
 }
@@ -6002,7 +6139,7 @@ function renderLedList(){
   for(let ri=rows.length-1; ri>=0; ri--){
     const row = rows[ri];
     computeColSpans(row.id).forEach(span=>{
-      if(span.startIdx === span.endIdx && isVSwallowed(ri, span.startIdx)) return;
+      if(isVSwallowed(ri, span.startIdx)) return;
       const startCol = cols[span.startIdx];
       const cell = getCell(row.id, startCol.id);
       const key = row.id+':'+startCol.id;
