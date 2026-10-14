@@ -131,7 +131,7 @@
 <style>
   :root{
     --ink:#151513;
-    --paper:#eeece5;
+    --paper:#eae6df;
     --oak:#b08655;
     --oak-dark:#8a663f;
     --graphite:#4a4a46;
@@ -323,7 +323,7 @@
 
   <style>
 #configuratorEmbed {
-    --ink:#151513; --paper:#eeece5; --oak:#b08655; --oak-dark:#8a663f;
+    --ink:#151513; --paper:#eae6df; --oak:#b08655; --oak-dark:#8a663f;
     --graphite:#4a4a46; --sand:#dedbd0; --line:rgba(21,21,19,0.16);
   }#configuratorEmbed * {box-sizing:border-box;margin:0;padding:0;}#configuratorEmbed body {background:var(--paper);color:var(--ink);font-family:Arial,Helvetica,sans-serif;line-height:1.5;}#configuratorEmbed .wrap {max-width:1100px;margin:0 auto;padding:32px 18px 100px;}#configuratorEmbed h1, #configuratorEmbed h2.wrap-title {font-family:Arial,Helvetica,sans-serif;font-weight:800;font-size:clamp(24px,4.5vw,34px);letter-spacing:-0.015em;margin-bottom:6px;}#configuratorEmbed .sub {color:var(--graphite);font-size:14px;margin-bottom:28px;}#configuratorEmbed .eyebrow {font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--oak-dark);margin-bottom:8px;}#configuratorEmbed h2.section-title {font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:17px;margin-bottom:14px;}#configuratorEmbed .panel {background:#fff;border:1px solid var(--line);border-radius:var(--radius-card);padding:22px;margin-bottom:22px;box-shadow:0 4px 18px rgba(21,21,19,0.05);}#configuratorEmbed .row-list, #configuratorEmbed .col-list {display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}#configuratorEmbed .row-item, #configuratorEmbed .col-item {
     display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-family:Arial,Helvetica,sans-serif;font-size:12px;max-width:100%;
@@ -591,6 +591,9 @@
     @page{size:A4;margin:16mm;}
   }
   
+  /* werkvlak (de kaart waarin je dingen aanklikt en aanpast): lichtbruin */
+  #configuratorEmbed .panel, #configuratorEmbed .summary {background:#e6dac8;border-color:rgba(138,102,63,0.28);}
+
   /* KNOPPEN: duidelijk herkenbaar als knop (zandkleur met rand en schaduw, i.p.v. wit op wit) */
   #configuratorEmbed .type-btn:not(.active):not(:disabled),
   #configuratorEmbed .view-btn:not(.active),
@@ -773,7 +776,7 @@
     </div>
   </section>
 
-  <section id="configurator" style="background:#f1ebdf;padding-left:0;padding-right:0;scroll-margin-top:90px;">
+  <section id="configurator" style="background:#eae6df;padding-left:0;padding-right:0;scroll-margin-top:90px;">
     <div class="container" style="margin-bottom:0;">
       <div class="section-head">
         <div class="eyebrow">Configurator</div>
@@ -1349,12 +1352,14 @@ const MATERIALS = [
   {id:'eikenhout', name:'Eikenhout', color:0xc19a6b},
   {id:'notenhout', name:'Notenhout', color:0x5b3a29},
   {id:'zandbeige', name:'Zandbeige', color:0xe3caa0},
+  {id:'taupe', name:'Taupe', color:0x9c8d7e},
 ];
 const MAT_HEX = id => '#' + MATERIALS.find(m=>m.id===id).color.toString(16).padStart(6,'0');
 // als een materiaal-id niet (meer) bestaat - bijv. net verwijderd/hernoemd in de administratie-app -
 // terugvallen op het eerste materiaal in de lijst, in plaats van te crashen
 function matOf(id){ return MATERIALS.find(m=>m.id===id) || MATERIALS[0]; }
-function defMatId(){ return (MATERIALS[0]||{id:'gebrokenwit'}).id; }
+// standaardkleur van de voorbeeldkast: taupe (als die in de lijst staat), anders het eerste materiaal
+function defMatId(){ const t = MATERIALS.find(m => m.id==='taupe' || /taupe/i.test(m.name||'')); return (t || MATERIALS[0] || {id:'gebrokenwit'}).id; }
 let EXTRA_OPTIES = []; // door de administratie-app vrij toe te voegen/verwijderen extra's (bijv. spotjes, plankendragers) - {id, naam, prijs}
 // grof (maar voor onze doeleinden ruim voldoende) contrastbepaling — gebruikt om overal waar tekst/
 // lijnen OP een materiaalkleur getekend worden automatisch donker-op-licht of licht-op-donker te
@@ -7180,8 +7185,12 @@ function applyRemoteTariffs(obj){
     obj.materialsList.forEach(m => MATERIALS.push({ id:m.id, name:m.name, color:m.color }));
     materialPrices = {};
     obj.materialsList.forEach(m => { materialPrices[m.id] = m.prijs; });
-    if(!MATERIALS.find(m=>m.id===plintMaterial)) plintMaterial = MATERIALS[0].id;
-    if(!MATERIALS.find(m=>m.id===worktop.material)) worktop.material = MATERIALS[0].id;
+    // vakken/plint/blad met een kleur die niet (meer) in de lijst staat krijgen de standaardkleur
+    const okMat = id => !!MATERIALS.find(m=>m.id===id);
+    const fixCells = cs => Object.values(cs||{}).forEach(c => { if(c){ if(!okMat(c.material)) c.material = defMatId(); if(c.doorMaterial && !okMat(c.doorMaterial)) c.doorMaterial = null; } });
+    try{ fixCells(cells); (walls||[]).forEach(w => { fixCells(w.cells); if(w.plintMaterial && !okMat(w.plintMaterial)) w.plintMaterial = defMatId(); if(w.worktop && !okMat(w.worktop.material)) w.worktop.material = defMatId(); if(w.endPanels && w.endPanels.material && !okMat(w.endPanels.material)) w.endPanels.material = defMatId(); }); }catch(e){}
+    if(!MATERIALS.find(m=>m.id===plintMaterial)) plintMaterial = defMatId();
+    if(!MATERIALS.find(m=>m.id===worktop.material)) worktop.material = defMatId();
   }
   if(obj.extraOptiesList){
     EXTRA_OPTIES.length = 0;
