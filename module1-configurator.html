@@ -3245,13 +3245,18 @@ function renderLayoutEditor(){
   const canRight = hsN===1 && rightIdx < cols.length && vSpanLen(rIdx, rightIdx)===1 && sameH(cIdx, rightIdx);
   const leftSp = computeColSpans(row.id).find(sp => sp.endIdx === cIdx-1);
   const canLeft = hsN===1 && !!leftSp && vSpanLen(rIdx, leftSp.startIdx)===1 && sameH(cIdx, leftSp.startIdx);
+  // in 3D staat de wand die de hoek om draait (of kant 2 van een kookeiland) gespiegeld: links en rechts in beeld zijn dan
+  // omgekeerd aan de volgorde van de kastdelen. De knoppen volgen wat je in beeld ziet.
+  const cornerLayout2 = walls.length===2 && (selectedLayout==='hoek-links' || selectedLayout==='hoek-rechts' || selectedLayout==='l-opstelling');
+  const primaryIdx2 = (selectedLayout==='hoek-rechts') ? 1 : 0;
+  const mirrored = (currentView==='3d' || currentView==='room') && ((cornerLayout2 && activeWallIndex !== primaryIdx2) || (selectedLayout==='kookeiland' && walls.length===3 && activeWallIndex===2));
   const mb = (id, label, ok, why) => `<button type="button" class="type-btn sm" id="${id}" ${ok?'':'disabled title="'+why+'"'}>${label}</button>`;
   const mergeHtml = `<div class="cs-group" style="margin-top:10px;"><div class="cs-group-title">Samenvoegen tot 1 module</div>
       <div class="cs-opts">
         ${mb('mgUp', '+ module erboven', canUp, 'Kan alleen als de modules even breed zijn')}
         ${mb('mgDown', '+ module eronder', canDown, 'Kan alleen als de modules even breed zijn')}
-        ${mb('mgLeft', '+ module links', canLeft, 'Kan alleen als de modules even hoog zijn')}
-        ${mb('mgRight', '+ module rechts', canRight, 'Kan alleen als de modules even hoog zijn')}
+        ${mb('mgLeft', '+ module links', mirrored ? canRight : canLeft, 'Kan alleen als de modules even hoog zijn')}
+        ${mb('mgRight', '+ module rechts', mirrored ? canLeft : canRight, 'Kan alleen als de modules even hoog zijn')}
         ${hsN>1 ? '<button type="button" class="type-btn sm" id="mgUnV">Hoogte weer losmaken</button>' : ''}
         ${colSpan>1 ? '<button type="button" class="type-btn sm" id="mgUnH">Breedte weer losmaken</button>' : ''}
       </div>
@@ -3287,17 +3292,19 @@ function renderLayoutEditor(){
   });
   on('mgUnV','click', ()=>{ const c = getCell(row.id, col.id); c.heightSpan = 1; c.doorSpan = 1; render(); });
   const spanAtH = ci => Math.max(1, Math.min(Number(getCell(row.id, cols[ci].id).widthSpan)||1, cols.length - ci));
-  on('mgRight','click', ()=>{
+  const doNext = ()=>{
     const c = getCell(row.id, col.id), add = spanAtH(rightIdx);
     getCell(row.id, cols[rightIdx].id).widthSpan = 1;
     c.widthSpan = colSpan + add; c.widthSpanDir = 'rechts'; row.parts = null; row.partsSig = null; render();
-  });
-  on('mgLeft','click', ()=>{
+  };
+  const doPrev = ()=>{
     const lc = getCell(row.id, cols[leftSp.startIdx].id), c = getCell(row.id, col.id);
     const total = (leftSp.endIdx - leftSp.startIdx + 1) + colSpan;
     c.widthSpan = 1; lc.widthSpan = total; lc.widthSpanDir = 'rechts';
     selectedCell = { rowId: row.id, colId: cols[leftSp.startIdx].id }; row.parts = null; row.partsSig = null; render();
-  });
+  };
+  on('mgRight','click', mirrored ? doPrev : doNext);
+  on('mgLeft','click', mirrored ? doNext : doPrev);
   on('mgUnH','click', ()=>{ clearWidthSpan(row.id, col.id); row.parts = null; row.partsSig = null; render(); });
   on('layoutRemoveBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'leeg'; c.door = false; c.doorSpan = 1; render(); });
   on('layoutRestoreBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'open'; render(); });
