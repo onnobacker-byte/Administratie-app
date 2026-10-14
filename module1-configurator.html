@@ -960,11 +960,9 @@
             </div>
           </div>
 
-          <details class="cs-more" id="layoutAdvanced" style="margin-bottom:18px;">
-            <summary>Alle verdiepingen en kastdelen in een lijst (voor wie het precies wil instellen)</summary>
-            <div class="cs-more-body">
+          <div id="layoutAdvanced">
           <div class="panel">
-            <h2 class="section-title">Verdiepingen (op elkaar, van onder naar boven)</h2>
+            <h2 class="section-title">Aantal verdiepingen en hoogtes (van onder naar boven)</h2>
             <div class="row-list" id="rowList"></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <button class="add-btn" id="addRow">+ Verdieping erbij</button>
@@ -973,7 +971,7 @@
           </div>
 
           <div class="panel">
-            <h2 class="section-title">Kastdelen (naast elkaar, van links naar rechts)</h2>
+            <h2 class="section-title">Aantal kastdelen en breedtes (van links naar rechts)</h2>
             <div class="tv-note" id="tvColNote" style="display:none;">Er zit een tv-vak in je kast. De kastdelen worden daarom automatisch verdeeld: links en rechts even breed, en boven en onder het tv-vak twee kastdelen die samen precies zo breed zijn als het tv-vak.</div>
             <div class="col-list" id="colList"></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;" id="colButtons">
@@ -983,8 +981,7 @@
             <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:var(--graphite);margin-top:12px;">Pas je de breedte van één kastdeel aan, dan blijft dat kastdeel (met zijn inhoud) precies zo. De rest van de breedte wordt automatisch verdeeld over kastdelen van maximaal 60 cm, zodat de totale breedte blijft kloppen.</p>
           </div>
 
-            </div>
-          </details>
+          </div>
 
           <div class="wizard-nav">
             <button type="button" class="btn secondary wizard-prev-btn" data-goto="2">← Vorige</button>
@@ -2126,6 +2123,37 @@ function computeColSpans(rowId){
   }
   return spans;
 }
+
+// ---- Modules samenvoegen in de hoogte: het onderste vak (eigenaar) neemt de vakken erboven over (cell.heightSpan) ----
+function vSpanLen(ri, ci){
+  const cell = getCell(rows[ri].id, cols[ci].id);
+  return Math.max(1, Math.min(Number(cell.heightSpan)||1, rows.length - ri));
+}
+function vOwnerOf(ri, ci){
+  for(let s=0; s<ri; s++){ if(s + vSpanLen(s, ci) - 1 >= ri) return s; }
+  return ri;
+}
+function isVSwallowed(ri, ci){ return vOwnerOf(ri, ci) !== ri; }
+function vSumHeight(ri, ci){
+  const eff = getEffectiveRowHeights(cols[ci]);
+  let sum = 0; const len = vSpanLen(ri, ci);
+  for(let k=0; k<len; k++) sum += eff[ri+k];
+  return sum;
+}
+function normalizeVSpans(){
+  for(let ci=0; ci<cols.length; ci++){
+    let covered = -1;
+    for(let ri=0; ri<rows.length; ri++){
+      const cell = getCell(rows[ri].id, cols[ci].id);
+      if(ri <= covered){ cell.heightSpan = 1; cell.door = false; cell.doorSpan = 1; continue; }
+      let len = Math.max(1, Math.min(Number(cell.heightSpan)||1, rows.length - ri));
+      if(len > 1 && (Number(cell.widthSpan)||1) > 1) len = 1;
+      cell.heightSpan = len;
+      if(len > 1 && cell.door) cell.doorSpan = len;
+      covered = ri + len - 1;
+    }
+  }
+}
 // Vrije breedte PER MODULE: `cell.widthCm` (alleen op het startvak van een vak in die rij). Geeft voor een
 // rij met zo'n afwijking de breedte + positie (cm vanaf de linkerkant, in kolomvolgorde) van elk vak
 // in die rij, of null als er in die rij geen afwijking is. De totale rijbreedte blijft altijd gelijk: de
@@ -2628,8 +2656,13 @@ function renderCanvas2d(targetId){
       let xAcc = colPixelLeft[span.startIdx];
       const ov2d = rowOverrideLayout(row.id);
       const ovCell2d = ov2d && ov2d[span.startIdx];
-      const rh = colRowPixelH[span.startIdx][ri];
-      const rowY = colRowPixelTop[span.startIdx][ri];
+      if(!isMerged && isVSwallowed(ri, span.startIdx)) return; // samengevoegd in de module eronder
+      let rh = colRowPixelH[span.startIdx][ri];
+      let rowY = colRowPixelTop[span.startIdx][ri];
+      if(!isMerged){
+        const vLen = vSpanLen(ri, span.startIdx);
+        if(vLen > 1){ rh = 0; for(let k=0; k<vLen; k++) rh += colRowPixelH[span.startIdx][ri+k]; rowY = colRowPixelTop[span.startIdx][ri+vLen-1]; }
+      }
       const cell = getCell(row.id, startCol.id);
       if(ovCell2d){ cw = ovCell2d.w*scale; xAcc = cabinetLeftPx + ovCell2d.off*scale; } // vrije breedte van dit vak
       const mat = matOf(cell.material);
@@ -3196,6 +3229,33 @@ function renderLayoutEditor(){
   const widthNow = (rowOvr && rowOvr[cIdx]) ? rowOvr[cIdx].w : spanW;
   const removed = cell.type === 'leeg';
   const r1 = v => Math.round(v*10)/10;
+  // samenvoegen: in de hoogte alleen als de modules even breed zijn, in de breedte alleen als ze even hoog zijn
+  const modW = (r, ci) => { const ov = rowOverrideLayout(r.id); return (ov && ov[ci]) ? ov[ci].w : cols[ci].width; };
+  const wSpanOf = (ri, ci) => Number(getCell(rows[ri].id, cols[ci].id).widthSpan)||1;
+  const hsN = vSpanLen(rIdx, cIdx);
+  const wtGapAfter = (ri) => worktop.enabled && worktop.afterRowIndex === ri; // het werkblad ligt tussen deze rij en de volgende
+  const nxtIdx = rIdx + hsN;
+  const canUp = nxtIdx < rows.length && colSpan===1 && wSpanOf(nxtIdx, cIdx)===1 && Math.abs(modW(rows[nxtIdx], cIdx) - modW(row, cIdx)) < 0.05 && !wtGapAfter(nxtIdx-1)
+    && getCell(rows[nxtIdx].id, cols[cIdx].id).type !== 'tv' && cell.type !== 'tv';
+  const belowOwner = rIdx > 0 ? vOwnerOf(rIdx-1, cIdx) : -1;
+  const canDown = rIdx > 0 && colSpan===1 && wSpanOf(belowOwner, cIdx)===1 && Math.abs(modW(rows[belowOwner], cIdx) - modW(row, cIdx)) < 0.05 && !wtGapAfter(rIdx-1)
+    && getCell(rows[belowOwner].id, cols[cIdx].id).type !== 'tv' && cell.type !== 'tv';
+  const sameH = (cA, cB) => Math.abs(getEffectiveRowHeights(cols[cA])[rIdx] - getEffectiveRowHeights(cols[cB])[rIdx]) < 0.05;
+  const rightIdx = cIdx + colSpan;
+  const canRight = hsN===1 && rightIdx < cols.length && vSpanLen(rIdx, rightIdx)===1 && sameH(cIdx, rightIdx);
+  const leftSp = computeColSpans(row.id).find(sp => sp.endIdx === cIdx-1);
+  const canLeft = hsN===1 && !!leftSp && vSpanLen(rIdx, leftSp.startIdx)===1 && sameH(cIdx, leftSp.startIdx);
+  const mb = (id, label, ok, why) => `<button type="button" class="type-btn sm" id="${id}" ${ok?'':'disabled title="'+why+'"'}>${label}</button>`;
+  const mergeHtml = `<div class="cs-group" style="margin-top:10px;"><div class="cs-group-title">Samenvoegen tot 1 module</div>
+      <div class="cs-opts">
+        ${mb('mgUp', '+ module erboven', canUp, 'Kan alleen als de modules even breed zijn')}
+        ${mb('mgDown', '+ module eronder', canDown, 'Kan alleen als de modules even breed zijn')}
+        ${mb('mgLeft', '+ module links', canLeft, 'Kan alleen als de modules even hoog zijn')}
+        ${mb('mgRight', '+ module rechts', canRight, 'Kan alleen als de modules even hoog zijn')}
+        ${hsN>1 ? '<button type="button" class="type-btn sm" id="mgUnV">Hoogte weer losmaken</button>' : ''}
+        ${colSpan>1 ? '<button type="button" class="type-btn sm" id="mgUnH">Breedte weer losmaken</button>' : ''}
+      </div>
+      <p class="cs-hint" style="margin:6px 0 0;">Boven elkaar samenvoegen kan alleen als de modules even breed zijn; naast elkaar alleen als ze even hoog zijn.</p></div>`;
   const fld = (id, label, val, extra, disabled) => `<div class="stepper-row"><span class="lbl">${label}</span><div class="stepper-value" style="background:#f4f1ea;border-radius:999px;padding:4px 12px;"><input type="number" min="5" step="0.5" id="${id}" value="${val}" ${disabled?'disabled':''} style="background:transparent;"><span class="stepper-unit">cm</span></div>${extra||''}</div>`;
   box.innerHTML = `<div class="cs-title" style="border-top:none;padding-top:0;">Module op verdieping ${rIdx+1}, kastdeel ${cIdx+1}${removed?' (verwijderd)':''}</div>`
     + (removed ? `<p class="cs-hint" style="margin:0 0 12px;">Deze module is verwijderd: op deze plek staat geen kast. De andere modules blijven staan.</p>
@@ -3204,6 +3264,7 @@ function renderLayoutEditor(){
       + (freeWidthPossible ? '' : '<p class="cs-hint" style="margin:-6px 0 10px;">Er is maar 1 kastdeel op deze verdieping; de breedte pas je aan bij Afmetingen (stap 2).</p>')
       + fld('layoutH', 'Hoogte', r1(effH), (col.rowOverrides && col.rowOverrides[row.id]!==undefined ? '<button class="mini-remove" id="layoutHReset">terugzetten</button>' : ''), false)
       + fld('layoutD', 'Diepte', r1(effD), (col.depthOverrides && col.depthOverrides[row.id]!==undefined ? '<button class="mini-remove" id="layoutDReset">terugzetten</button>' : ''), false)
+      + mergeHtml
       + `<button type="button" class="add-btn secondary" id="layoutRemoveBtn" style="margin-top:6px;">Deze module verwijderen</button>`);
   const on = (id, ev, fn) => { const el = box.querySelector('#'+id); if(el) el.addEventListener(ev, fn); };
   on('layoutW','change', e=>{ const v = parseNum(e.target.value); getCell(selectedCell.rowId, selectedCell.colId).widthCm = (v>0) ? Math.max(10, v) : null; render(); });
@@ -3212,6 +3273,32 @@ function renderLayoutEditor(){
   on('layoutHReset','click', ()=>{ clearRowOverride(col.id, row.id); render(); });
   on('layoutD','change', e=>{ setDepthOverride(col.id, row.id, Math.max(5, parseNum(e.target.value)||effD)); render(); });
   on('layoutDReset','click', ()=>{ clearDepthOverride(col.id, row.id); render(); });
+  const resetCell = c => { c.type = 'open'; c.door = false; c.doorSpan = 1; c.heightSpan = 1; };
+  on('mgUp','click', ()=>{
+    const owner = getCell(row.id, col.id), add = vSpanLen(nxtIdx, cIdx);
+    for(let k=nxtIdx; k<nxtIdx+add; k++) resetCell(getCell(rows[k].id, col.id));
+    owner.heightSpan = hsN + add; owner.doorSpan = owner.door ? owner.heightSpan : 1; render();
+  });
+  on('mgDown','click', ()=>{
+    const oc = getCell(rows[belowOwner].id, col.id);
+    for(let k=rIdx; k<rIdx+hsN; k++) resetCell(getCell(rows[k].id, col.id));
+    oc.heightSpan = vSpanLen(belowOwner, cIdx) + hsN; oc.doorSpan = oc.door ? oc.heightSpan : 1;
+    selectedCell = { rowId: rows[belowOwner].id, colId: col.id }; render();
+  });
+  on('mgUnV','click', ()=>{ const c = getCell(row.id, col.id); c.heightSpan = 1; c.doorSpan = 1; render(); });
+  const spanAtH = ci => Math.max(1, Math.min(Number(getCell(row.id, cols[ci].id).widthSpan)||1, cols.length - ci));
+  on('mgRight','click', ()=>{
+    const c = getCell(row.id, col.id), add = spanAtH(rightIdx);
+    getCell(row.id, cols[rightIdx].id).widthSpan = 1;
+    c.widthSpan = colSpan + add; c.widthSpanDir = 'rechts'; row.parts = null; row.partsSig = null; render();
+  });
+  on('mgLeft','click', ()=>{
+    const lc = getCell(row.id, cols[leftSp.startIdx].id), c = getCell(row.id, col.id);
+    const total = (leftSp.endIdx - leftSp.startIdx + 1) + colSpan;
+    c.widthSpan = 1; lc.widthSpan = total; lc.widthSpanDir = 'rechts';
+    selectedCell = { rowId: row.id, colId: cols[leftSp.startIdx].id }; row.parts = null; row.partsSig = null; render();
+  });
+  on('mgUnH','click', ()=>{ clearWidthSpan(row.id, col.id); row.parts = null; row.partsSig = null; render(); });
   on('layoutRemoveBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'leeg'; c.door = false; c.doorSpan = 1; render(); });
   on('layoutRestoreBtn','click', ()=>{ const c = getCell(selectedCell.rowId, selectedCell.colId); c.type = 'open'; render(); });
 }
@@ -3508,6 +3595,7 @@ function renderSummary(){
   for(let ri=rows.length-1; ri>=0; ri--){
     for(let ci=0; ci<cols.length; ci++){
       const row = rows[ri], col = cols[ci];
+      if(isVSwallowed(ri, ci)) continue;
       const cell = getCell(row.id, col.id);
       const mat = matOf(cell.material);
       const typeLabel = TYPES.find(t=>t.id===cell.type).label + (cell.type==='kledinglift' ? ' (' + ((cell.options && cell.options.liftMode==='elektrisch') ? 'elektrisch' : 'handmatig') + ')' : '');
@@ -4374,7 +4462,9 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
     { let accBO=0; for(let ri=0; ri<rows.length; ri++){ colRowBottomOffset[ri]=accBO; accBO+=effHeights[ri]; } }
     for(let ri=0; ri<rows.length; ri++){
       const row = rows[ri];
-      const rowHeightEff = effHeights[ri];
+      if(isVSwallowed(ri, ci)) continue; // dit vak zit samengevoegd in de module eronder (die telt de hoogte al mee)
+      let rowHeightEff = effHeights[ri];
+      { const vLen = vSpanLen(ri, ci); for(let k=1; k<vLen; k++) rowHeightEff += effHeights[ri+k]; }
 
       const mySpans = computeColSpans(row.id);
       const mySpanInfo = mySpans.find(s => s.startIdx <= ci && ci <= s.endIdx);
@@ -5462,12 +5552,13 @@ function wallPriceItems(){
       const priceSpanInfo = rowSpansForPrice.find(s => s.startIdx <= ci && ci <= s.endIdx);
       if(priceSpanInfo && priceSpanInfo.startIdx !== ci) continue; // opgeslokt door een eerdere kolom, niet apart meetellen
       const row = rows[ri], col = cols[ci];
+      if(isVSwallowed(ri, ci)) continue; // zit samengevoegd in de module eronder
       const cell = getCell(row.id, col.id);
       if(cell.type === 'nis' || cell.type === 'leeg') continue; // een nis/verwijderde module is open ruimte: geen kast, dus geen kosten
       let cw = priceSpanInfo ? widthOfColSpan(priceSpanInfo.startIdx, priceSpanInfo.endIdx) : col.width;
       const ovPrice = rowOverrideLayout(row.id);
       if(ovPrice && ovPrice[ci]) cw = ovPrice[ci].w;
-      const rh = getEffectiveRowHeights(col)[ri], cd = getEffectiveDepth(col, row.id);
+      const rh = vSumHeight(ri, ci), cd = getEffectiveDepth(col, row.id);
       const matPrice = materialPrices[cell.material] || 0;
       const mod = { ri, ci, items: [] };
       const add = (key, amount) => { mod.items.push({ key, amount }); };
@@ -5904,6 +5995,7 @@ function renderLedList(){
   for(let ri=rows.length-1; ri>=0; ri--){
     const row = rows[ri];
     computeColSpans(row.id).forEach(span=>{
+      if(span.startIdx === span.endIdx && isVSwallowed(ri, span.startIdx)) return;
       const startCol = cols[span.startIdx];
       const cell = getCell(row.id, startCol.id);
       const key = row.id+':'+startCol.id;
@@ -5942,6 +6034,7 @@ function renderLedList(){
 }
 
 function render(){
+  normalizeVSpans();
   applyTvLayout();
   applyRowParts();
   renderWallTabs();
@@ -6649,13 +6742,14 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
     for(let ci=0; ci<cols.length; ci++){
       const spanInfo = rowSpans.find(s => s.startIdx <= ci && ci <= s.endIdx);
       if(spanInfo && spanInfo.startIdx !== ci) continue; // opgeslokt door een samengevoegd vak
+      if(isVSwallowed(ri, ci)) continue; // zit samengevoegd in de module eronder
       n++;
       const row = rows[ri], col = cols[ci];
       const cell = getCell(row.id, col.id);
       let cw = spanInfo ? widthOfColSpan(spanInfo.startIdx, spanInfo.endIdx) : col.width;
       const ov = rowOverrideLayout(row.id);
       if(ov && ov[ci]) cw = ov[ci].w;
-      const rh = getEffectiveRowHeights(col)[ri], cd = getEffectiveDepth(col, row.id);
+      const rh = vSumHeight(ri, ci), cd = getEffectiveDepth(col, row.id);
       const pm = items.modules.find(m => m.ri === ri && m.ci === ci) || { items: [], total: 0 };
       const mod = { title: 'Module ' + n, pos: 'verdieping ' + (ri+1) + ', kastdeel ' + (ci+1),
         size: quoteNum(cw) + ' x ' + quoteNum(rh) + ' x ' + quoteNum(cd) + ' cm',
