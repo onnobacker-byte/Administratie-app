@@ -1597,8 +1597,10 @@ function drawCellTypeVisual(container, cell, x, y, w, h, strokeColor, frontColor
     container.appendChild(tap);
   } else if(cell.type==='tv'){
     // open vak met een tv erin (alleen ter illustratie; de tv zelf hoort niet bij de kast)
-    const sw = Math.min(w*0.86, (h*0.62)*16/9), sh = sw*9/16;
-    const sx = x + (w-sw)/2, sy = y + (h-sh)/2 - h*0.04;
+    // de tv is 5 cm kleiner dan het vak aan de zijkanten en bovenkant, en 10 cm kleiner aan de onderkant
+    const pxc = pxPerCm || 2;
+    let sw = w - 10*pxc, sh = h - 15*pxc, sx = x + 5*pxc, sy = y + 5*pxc;
+    if(!(sw > 4 && sh > 4)){ sw = Math.min(w*0.86, (h*0.62)*16/9); sh = sw*9/16; sx = x + (w-sw)/2; sy = y + (h-sh)/2 - h*0.04; }
     const scr = document.createElementNS(NS,'rect');
     scr.setAttribute('x', sx); scr.setAttribute('y', sy); scr.setAttribute('width', Math.max(0,sw)); scr.setAttribute('height', Math.max(0,sh));
     scr.setAttribute('rx', 2); scr.setAttribute('fill', '#151513'); scr.style.pointerEvents = 'none';
@@ -3498,10 +3500,10 @@ function renderCellEditorInner(backdrop, box){
     let tvHtml = '';
     if(maxW > 1) tvHtml += line2('Breedte van het tv-vak', btns('tvspan', nums(maxW).map(([v]) => [v, v===1 ? '1 kastdeel' : v + ' kastdelen']), colSpan));
     tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Over kastdeel ${cIdx+1}${colSpan>1 ? ' t/m ' + (cIdx+colSpan) : ''}</p>`;
-    if(colSpan < C) tvHtml += line2('Breedte in cm', `<input type="number" min="20" step="1" value="${Math.round(spanWidthCm)}" data-tvwidthcm="1" style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`
-      + `<span class="cs-hint">de kastdelen erboven en eronder worden even breed, de rest verdeelt zich over de andere kastdelen</span>`);
-    tvHtml += line2('Hoogte in cm', `<input type="number" min="20" step="1" value="${Math.round(effHeightForThisCell)}" data-tvheightcm="1" style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`
-      + `<span class="cs-hint">${rows.length > 1 ? 'de hele verdieping wordt zo hoog, de andere verdiepingen verdelen de rest van de hoogte' : 'dit is de hoogte van de kast; pas die aan bij stap 2'}</span>`);
+    const tvInp = (attr, v) => `<input type="number" min="10" step="1" value="${v}" ${attr} style="width:84px;padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;text-align:center;background:#fff;color:var(--ink);font-size:14px;"> cm`;
+    tvHtml += line2('Breedte van de tv', tvInp('data-tvw="1"', Math.max(10, Math.round(spanWidthCm - 10))));
+    tvHtml += line2('Hoogte van de tv', tvInp('data-tvh="1"', Math.max(10, Math.round(effHeightForThisCell - 15))));
+    tvHtml += `<p class="cs-hint" style="margin:0 0 10px;">Het tv-vak is automatisch 5 cm groter dan de tv aan de zijkanten en bovenkant, en 10 cm groter aan de onderkant. Nu: <strong>${Math.round(spanWidthCm)} x ${Math.round(effHeightForThisCell)} cm</strong>. De kasten eromheen passen zich vanzelf aan; ${rows.length > 1 ? 'de andere verdiepingen verdelen de rest van de hoogte' : 'bij 1 verdieping wordt de hele kast zo hoog'}${colSpan < C ? ', de andere kastdelen verdelen de rest van de breedte' : ''}.</p>`;
     if(colSpan < C){
       const midStart = (C - colSpan) / 2;
       const canMid = Number.isInteger(midStart);
@@ -3549,6 +3551,29 @@ function renderCellEditorInner(backdrop, box){
   box.innerHTML = html;
 
   box.querySelector('#csMore').addEventListener('toggle', e=>{ cellSettingsMoreOpen = e.currentTarget.open; });
+  const tvWInp = box.querySelector('[data-tvw]'), tvHInp = box.querySelector('[data-tvh]');
+  if(tvWInp && tvHInp){
+    const applyTvDims = () => {
+      const w = parseNum(tvWInp.value), h = parseNum(tvHInp.value);
+      if(!(w > 0) || !(h > 0)) return;
+      if(colSpan < cols.length) setTvVakWidthCm(cIdx, colSpan, w + 10);
+      const Hmod = Math.max(20, h + 15);
+      if(rows.length >= 2){
+        cols.forEach(c => clearRowOverride(c.id, row.id));
+        row.height = Hmod; row.fixed = true;
+        rowFixOrder = rowFixOrder.filter(id => id !== row.id); rowFixOrder.push(row.id);
+        recomputeRowFlex();
+      } else {
+        lockedTotalHeight = Hmod + plintHeightCm() + marginTopCm + (worktop.enabled ? worktop.thicknessCm : 0);
+        rows[0].fixed = false; rowFixOrder = []; recomputeRowFlex();
+      }
+      render();
+    };
+    [tvWInp, tvHInp].forEach(inp => {
+      inp.addEventListener('change', applyTvDims);
+      inp.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); applyTvDims(); } });
+    });
+  }
   const tvH = box.querySelector('[data-tvheightcm]');
   if(tvH){
     if(rows.length < 2) tvH.disabled = true;
@@ -4837,14 +4862,15 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           cellGroup.add(dot);
         }
       } else if(cell.type==='tv'){
-        const tvW = Math.max(10, Math.min(spanWidth - 10, (rh - 2*t - 10) * 16/9));
-        const tvH = tvW * 9/16;
+        // de tv is 5 cm kleiner dan het vak aan de zijkanten en bovenkant, en 10 cm kleiner aan de onderkant
+        const tvW = Math.max(10, spanWidth - 10);
+        const tvH = Math.max(10, rh - 15);
         const screen = new THREE.Mesh(new THREE.BoxGeometry(tvW, tvH, 3), new THREE.MeshStandardMaterial({ color:0x111111, roughness:0.25, metalness:0.3 }));
-        screen.position.set(cx, cy + rh*0.03, -cellDepthEff/2 + t + 4);
+        screen.position.set(cx, cy - rh/2 + 10 + tvH/2, -cellDepthEff/2 + t + 4);
         screen.userData.noExport = true;
         cellGroup.add(screen);
         const glass = new THREE.Mesh(new THREE.PlaneGeometry(tvW - 2, tvH - 2), new THREE.MeshStandardMaterial({ color:0x1d2633, roughness:0.1, metalness:0.2, emissive:0x0b1220, emissiveIntensity:0.6 }));
-        glass.position.set(cx, cy + rh*0.03, -cellDepthEff/2 + t + 5.6);
+        glass.position.set(cx, cy - rh/2 + 10 + tvH/2, -cellDepthEff/2 + t + 5.6);
         glass.userData.noExport = true;
         cellGroup.add(glass);
       }
