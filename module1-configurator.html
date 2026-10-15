@@ -4992,13 +4992,15 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
     const plintRecessCm = 5; // hoeveel de voorkant van de plint terugligt t.o.v. de kastvoorkant
     const plintH = plintHeightCm();
     const plintDepth = Math.max(10, maxDepthCm - plintRecessCm);
-    const plintGeo = new THREE.BoxGeometry(totalWidthCm - gap, plintH, plintDepth);
+    // sluitzijden die niet tot de grond komen: de plint loopt dan door onder het paneel, tot aan de muur
+    const plintExtL = endPanelToFloor() ? 0 : endLeftCm(), plintExtR = endPanelToFloor() ? 0 : endRightCm();
+    const plintGeo = new THREE.BoxGeometry(totalWidthCm - gap + plintExtL + plintExtR, plintH, plintDepth);
     const plintMatColor = matOf(plintMaterial).color;
     const plintMat = new THREE.MeshStandardMaterial({ color:plintMatColor, roughness:0.7 });
     const plint = new THREE.Mesh(plintGeo, plintMat);
     // achterkant plint = achterkant kast (-maxDepthCm/2); vandaar de z-positie zo berekend
     const plintZ = -maxDepthCm/2 + plintDepth/2;
-    plint.position.set(cabinetCenterX, -totalStackHeightCm/2 - plintH/2, plintZ);
+    plint.position.set(cabinetCenterX + (plintExtR - plintExtL)/2, -totalStackHeightCm/2 - plintH/2, plintZ);
     group.add(plint);
   }
 
@@ -5838,7 +5840,7 @@ function wallPriceItems(){
       extras.push({ key:'hoekstrip', amount: ((cornerOtherDepthForPrice()+CORNER_FILLER_CM)*fh/10000) * (materialPrices[mat] || 0) * marginMult + e * ebRate });
     }
   }
-  if(plintHeightMm > 0) extras.push({ key:'plint', amount: (totalW/100) * (otherPrices.pricePlint || 0) * partsMargin });
+  if(plintHeightMm > 0) extras.push({ key:'plint', amount: ((totalW + (endPanelToFloor() ? 0 : endLeftCm() + endRightCm()))/100) * (otherPrices.pricePlint || 0) * partsMargin });
   if(worktop.enabled && cols.length){
     const wtW = totalW + (worktop.overhangLeftCm||0) + (worktop.overhangRightCm||0) + endLeftCm() + endRightCm();
     const wtD = maxD + (worktop.overhangCm||0) + (worktop.overhangBackCm||0);
@@ -6966,7 +6968,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
     }
   }
   // losse onderdelen (met prijs)
-  if(plintHeightMm > 0) d.extra.push({ title: 'Plint', size: (plintHeightMm/10) + ' cm hoog x ' + quoteNum(totalW) + ' cm lang', material: quoteMat(plintMaterial), details: [], amount: extraOf(items, 'plint') });
+  if(plintHeightMm > 0) d.extra.push({ title: 'Plint', size: (plintHeightMm/10) + ' cm hoog x ' + quoteNum(totalW + (endPanelToFloor() ? 0 : endLeftCm() + endRightCm())) + ' cm lang', material: quoteMat(plintMaterial), details: [], amount: extraOf(items, 'plint') });
   if(islandSecond && (worktop.enabled || endPanels.left.on || endPanels.right.on)){
     d.extra.push({ title: 'Werkblad en sluitzijden', size: '', material: '', details: ['Zie Kookeiland (kant 1) - ze lopen als 1 geheel door over beide kanten (prijs staat daar)'], amount: 0 });
   }
