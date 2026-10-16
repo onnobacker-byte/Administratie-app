@@ -6155,7 +6155,12 @@ function renderContentPanel(){
       // eerder vastgepakt `cell` kon daardoor al los staan van de echte gegevens.
       if(!selectedCell) return;
       const chosen = getCell(selectedCell.rowId, selectedCell.colId);
-      chosen.type = e.currentTarget.dataset.contenttype;
+      const wanted = e.currentTarget.dataset.contenttype;
+      if(chosen.type === wanted && wanted !== 'open'){
+        // nogmaals op de gekozen soort klikken haalt hem weer weg (dan wordt het vak weer open); bij een tv-vak gaat de tv ook weg en worden de samengevoegde kastdelen weer los
+        if(wanted === 'tv') clearWidthSpan(selectedCell.rowId, selectedCell.colId);
+        chosen.type = 'open';
+      } else chosen.type = wanted;
       if(chosen.type === 'tv' || chosen.type === 'nis'){ chosen.door = false; chosen.doorSpan = 1; }
       render();
     });
