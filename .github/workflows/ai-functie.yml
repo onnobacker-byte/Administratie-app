@@ -1,0 +1,60 @@
+# Zet de AI-begrotingsfunctie automatisch online in Firebase zodra er iets verandert in de map "functions".
+#
+# Eenmalig instellen in GitHub: Settings -> Secrets and variables -> Actions -> New repository secret
+#   FIREBASE_SERVICE_ACCOUNT   de volledige inhoud van het JSON-sleutelbestand van het serviceaccount
+#   ANTHROPIC_API_KEY          je API-sleutel van console.anthropic.com (begint met sk-ant-)
+#
+# Handmatig starten kan ook: tabblad Actions -> "AI-functie online zetten" -> Run workflow.
+name: AI-functie online zetten
+
+on:
+  push:
+    branches: [main]
+    paths: ['functions/**', 'firebase.json', '.github/workflows/ai-functie.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: ai-functie
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Controleren of de geheimen zijn ingevuld
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$SA" ]; then echo "::error::Secret FIREBASE_SERVICE_ACCOUNT ontbreekt (zie uitleg bovenin dit bestand)"; exit 1; fi
+          if [ -z "$KEY" ]; then echo "::error::Secret ANTHROPIC_API_KEY ontbreekt (zie uitleg bovenin dit bestand)"; exit 1; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Onderdelen installeren
+        run: |
+          npm install -g firebase-tools
+          cd functions && npm ci
+
+      - name: Inloggen bij Google
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: API-sleutel veilig opslaan in Firebase
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: printf '%s' "$KEY" | firebase functions:secrets:set ANTHROPIC_API_KEY --data-file - --project adminstratie-programma --non-interactive --force
+
+      - name: Functie online zetten
+        run: firebase deploy --only functions --project adminstratie-programma --non-interactive --force
+
+      - name: Sleutelbestand opruimen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
