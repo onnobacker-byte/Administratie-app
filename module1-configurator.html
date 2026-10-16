@@ -1365,6 +1365,69 @@ const MATERIALS = [
   {id:'zandbeige', name:'Zandbeige', color:0xe3caa0},
   {id:'taupe', name:'Taupe', color:0x9c8d7e},
 ];
+// ---- Realistische materiaalafbeeldingen (zelf gegenereerd, past bij elke kleur) ----
+var m1TexCache = {};
+function m1TexKind(name){
+  const n = String(name||'').toLowerCase();
+  if(/eik|oak|noot|walnoot|walnut|hout|wood|teak|ceder|essen|beuk|fineer|bamboe/.test(n)) return /noot|walnoot|walnut|donker/.test(n) ? 'wood-dark' : 'wood';
+  if(/beton|concrete|cement|steen/.test(n)) return 'concrete';
+  if(/staal|steel|alu|metaal|rvs|inox|koper|brons/.test(n)) return 'steel';
+  return 'matte';
+}
+function m1TexUrl(kind, hex){
+  const key = kind + '|' + hex;
+  if(m1TexCache[key]) return m1TexCache[key];
+  let url = '';
+  try{
+    const S = 192, c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d');
+    let seed = 0; for(const ch of key) seed = (seed*31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed>>>15, 1 | seed); t = t + Math.imul(t ^ t>>>7, 61 | t) ^ t; return ((t ^ t>>>14) >>> 0) / 4294967296; };
+    g.fillStyle = hex; g.fillRect(0, 0, S, S);
+    if(kind === 'wood' || kind === 'wood-dark'){
+      // lange nerf: golvende, dunne verticale lijnen met wisselende sterkte, plus enkele donkere strepen en poriën
+      const dark = kind === 'wood-dark';
+      for(let i=0; i<150; i++){
+        const x0 = rnd()*S, amp = 0.6 + rnd()*2.6, fr = 0.004 + rnd()*0.012, ph = rnd()*6.28, w = 0.5 + rnd()*1.6;
+        g.strokeStyle = rnd() < 0.7 ? `rgba(0,0,0,${(dark?0.05:0.04) + rnd()*0.10})` : `rgba(255,255,255,${0.03 + rnd()*0.07})`;
+        g.lineWidth = w; g.beginPath();
+        for(let y=0; y<=S; y+=6){ const x = x0 + Math.sin(y*fr*6 + ph)*amp + Math.sin(y*0.045 + x0)*0.5; if(y===0) g.moveTo(x, y); else g.lineTo(x, y); }
+        g.stroke();
+      }
+      for(let i=0; i<26; i++){ const x = rnd()*S; g.fillStyle = `rgba(0,0,0,${0.05 + rnd()*0.07})`; g.fillRect(x, 0, 1 + rnd()*2.5, S); }
+      for(let i=0; i<260; i++){ g.fillStyle = `rgba(0,0,0,${0.08 + rnd()*0.10})`; g.fillRect(rnd()*S, rnd()*S, 0.8, 2 + rnd()*5); }
+      const gr = g.createLinearGradient(0, 0, S, 0); gr.addColorStop(0, 'rgba(255,255,255,0.07)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.02)'); gr.addColorStop(1, 'rgba(0,0,0,0.08)');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    } else if(kind === 'steel'){
+      for(let y=0; y<S; y++){ g.fillStyle = rnd() < 0.5 ? `rgba(255,255,255,${rnd()*0.12})` : `rgba(0,0,0,${rnd()*0.10})`; g.fillRect(0, y, S, 1); }
+      const gr = g.createLinearGradient(0, 0, S, S); gr.addColorStop(0, 'rgba(255,255,255,0.28)'); gr.addColorStop(0.45, 'rgba(255,255,255,0)'); gr.addColorStop(0.7, 'rgba(0,0,0,0.10)'); gr.addColorStop(1, 'rgba(255,255,255,0.14)');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    } else {
+      if(kind === 'concrete'){
+        for(let i=0; i<46; i++){
+          const x = rnd()*S, y = rnd()*S, r = 18 + rnd()*54, gg = g.createRadialGradient(x, y, 0, x, y, r);
+          const l = rnd() < 0.5; gg.addColorStop(0, l ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.09)'); gg.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = gg; g.fillRect(x-r, y-r, r*2, r*2);
+        }
+        for(let i=0; i<70; i++){ g.fillStyle = `rgba(0,0,0,${0.10 + rnd()*0.15})`; g.beginPath(); g.arc(rnd()*S, rnd()*S, 0.5 + rnd()*1.1, 0, 6.28); g.fill(); }
+      }
+      const im = g.getImageData(0, 0, S, S), d = im.data, amt = kind === 'concrete' ? 16 : 9;
+      for(let i=0; i<d.length; i+=4){ const n = (rnd() - 0.5) * amt; d[i] += n; d[i+1] += n; d[i+2] += n; }
+      g.putImageData(im, 0, 0);
+      const gr = g.createLinearGradient(0, 0, S, S); gr.addColorStop(0, 'rgba(255,255,255,0.10)'); gr.addColorStop(0.55, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.10)');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    }
+    url = c.toDataURL('image/jpeg', 0.82);
+  }catch(e){ url = ''; }
+  m1TexCache[key] = url;
+  return url;
+}
+function m1SwatchStyle(m){
+  const hex = '#' + (m.color >>> 0).toString(16).padStart(6, '0');
+  const url = m1TexUrl(m1TexKind(m.name || m.id), hex);
+  return `background-color:${hex};` + (url ? `background-image:url(${url});background-size:cover;` : '') + 'box-shadow:inset 0 0 0 1px rgba(0,0,0,0.10), inset 0 6px 12px rgba(255,255,255,0.18), inset 0 -8px 14px rgba(0,0,0,0.12);';
+}
+
 const MAT_HEX = id => '#' + MATERIALS.find(m=>m.id===id).color.toString(16).padStart(6,'0');
 // als een materiaal-id niet (meer) bestaat - bijv. net verwijderd/hernoemd in de administratie-app -
 // terugvallen op het eerste materiaal in de lijst, in plaats van te crashen
@@ -6082,7 +6145,7 @@ function renderMaterialSwatchGrid(el, field){
   const dominant = currentDominantMaterial(field);
   el.innerHTML = MATERIALS.map(m=>`
     <div>
-      <button type="button" class="material-swatch-btn ${m.id===dominant?'active':''}" data-materialstep="${m.id}" style="background:#${m.color.toString(16).padStart(6,'0')};" title="${m.name}"></button>
+      <button type="button" class="material-swatch-btn ${m.id===dominant?'active':''}" data-materialstep="${m.id}" style="${m1SwatchStyle(m)}" title="${m.name}"></button>
       <span class="material-swatch-label">${m.name}</span>
     </div>
   `).join('');
@@ -6105,7 +6168,7 @@ function renderMaterialStep(){
     if(anyWorktop){
       wtGrid.innerHTML = MATERIALS.map(m=>`
         <div>
-          <button type="button" class="material-swatch-btn ${m.id===worktop.material?'active':''}" data-worktopstep="${m.id}" style="background:#${m.color.toString(16).padStart(6,'0')};" title="${m.name}"></button>
+          <button type="button" class="material-swatch-btn ${m.id===worktop.material?'active':''}" data-worktopstep="${m.id}" style="${m1SwatchStyle(m)}" title="${m.name}"></button>
           <span class="material-swatch-label">${m.name}</span>
         </div>
       `).join('');
@@ -6831,7 +6894,7 @@ function renderWorktopExtra(){
     renderWorktopExtra(); if(renderer) build3dModel(); renderCanvas2d(); calculatePrice();
   }));
   const swatchRow = document.getElementById('worktopSwatchRow');
-  swatchRow.innerHTML = MATERIALS.map(m=>`<button class="swatch-btn ${worktop.material===m.id?'active':''}" style="background:#${m.color.toString(16).padStart(6,'0')};" data-worktopmat="${m.id}" title="${m.name}"></button>`).join('');
+  swatchRow.innerHTML = MATERIALS.map(m=>`<button class="swatch-btn ${worktop.material===m.id?'active':''}" style="${m1SwatchStyle(m)}" data-worktopmat="${m.id}" title="${m.name}"></button>`).join('');
   swatchRow.querySelectorAll('[data-worktopmat]').forEach(btn=>{
     btn.addEventListener('click', e=>{ setWorktopMaterialAllWalls(e.currentTarget.dataset.worktopmat); renderWorktopExtra(); if(renderer) build3dModel(); renderCanvas2d(); });
   });
