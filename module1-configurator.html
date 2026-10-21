@@ -1446,6 +1446,47 @@ function m1SwatchStyle(m){
   return `background-color:${hex};` + (url ? `background-image:url(${url});background-size:cover;` : '') + 'box-shadow:inset 0 0 0 1px rgba(0,0,0,0.10), inset 0 6px 12px rgba(255,255,255,0.18), inset 0 -8px 14px rgba(0,0,0,0.12);';
 }
 
+
+// echte plaatfoto (Baars & Bloemhoff) als textuur op de 3D-kast: elk onderdeel waarvan de kleur gelijk is aan een
+// plaatkleur met foto krijgt die foto, geschaald naar ca. 90 cm per tegel zodat de nerf niet uitgerekt wordt
+const m1TexCache3d = {};
+function m1ApplyPlateTextures(group){
+  if(!group || typeof THREE === 'undefined') return;
+  const plates = [];
+  MATERIALS.forEach(m => { const k = m1ImageKey(m.name || m.id); if(k && M1_MAT_IMAGES[k]) plates.push({k, r:(m.color>>16)&255, g:(m.color>>8)&255, b:m.color&255}); });
+  const TILE = 90;
+  group.traverse(o => {
+    if(!o.isMesh || !o.material || o.material.map || !o.material.isMeshStandardMaterial || !o.geometry || o.geometry.type !== 'BoxGeometry') return;
+    const c = o.material.color, cr = c.r*255, cg = c.g*255, cb = c.b*255;
+    // de kleur van een deel is de plaatkleur, soms iets donkerder gemaakt voor schaduwspel: factor f
+    let key = null, f = 1, best = 9;
+    plates.forEach(pl => {
+      const lum = pl.r + pl.g + pl.b; if(lum < 30) return;
+      const ff = (cr + cg + cb) / lum; if(ff < 0.6 || ff > 1.12) return;
+      const err = Math.max(Math.abs(cr - ff*pl.r), Math.abs(cg - ff*pl.g), Math.abs(cb - ff*pl.b));
+      if(err < best){ best = err; key = pl.k; f = ff; }
+    });
+    if(!key) return;
+    let tex = m1TexCache3d[key];
+    if(!tex){
+      tex = new THREE.TextureLoader().load(M1_MAT_IMAGES[key]);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = 4;
+      m1TexCache3d[key] = tex;
+    }
+    const g = o.geometry, pr = g && g.parameters;
+    if(g && g.type === 'BoxGeometry' && pr && !g.userData.m1uv && g.attributes.uv && g.attributes.uv.count === 24){
+      const dims = [[pr.depth, pr.height], [pr.depth, pr.height], [pr.width, pr.depth], [pr.width, pr.depth], [pr.width, pr.height], [pr.width, pr.height]];
+      const uv = g.attributes.uv;
+      for(let f = 0; f < 6; f++) for(let v = 0; v < 4; v++){
+        const i = f*4 + v;
+        uv.setXY(i, uv.getX(i) * dims[f][0] / TILE, uv.getY(i) * dims[f][1] / TILE);
+      }
+      uv.needsUpdate = true; g.userData.m1uv = true;
+    }
+    o.material.map = tex; o.material.color.setRGB(Math.min(1, f), Math.min(1, f), Math.min(1, f)); o.material.needsUpdate = true;
+  });
+}
 const MAT_HEX = id => '#' + MATERIALS.find(m=>m.id===id).color.toString(16).padStart(6,'0');
 // als een materiaal-id niet (meer) bestaat - bijv. net verwijderd/hernoemd in de administratie-app -
 // terugvallen op het eerste materiaal in de lijst, in plaats van te crashen
@@ -5457,6 +5498,7 @@ function build3dModel(){
     cabinetGroup.position.set(roomCabinetOffsetX - cabCenterX, 0, roomCabinetOffsetZ - cabCenterZ);
     cabinetGroup.rotation.y = roomCabinetRotationDeg * Math.PI/180;
     modelGroup.add(cabinetGroup);
+    m1ApplyPlateTextures(cabinetGroup);
   }
 
   // De losse Ruimte zelf wordt uitsluitend in z'n eigen weergave getoond — de kast z'n eigen
@@ -7181,6 +7223,7 @@ function captureQuoteImage(plateTitle){
         (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
           if(!m || seen.has(m)) return; seen.add(m);
           if(m.color && m.isMeshStandardMaterial){ m.color.convertSRGBToLinear(); m.envMapIntensity = 0.35; }
+          if(m.map){ m.map.encoding = THREE.sRGBEncoding; m.map.needsUpdate = true; }
         });
       });
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -7285,6 +7328,7 @@ function captureQuoteImage(plateTitle){
       scene.background = before.bg; scene.fog = before.fog; scene.environment = before.env;
       ambLights.forEach(a => { a.o.intensity = a.i; });
       renderer.toneMapping = before.tm; renderer.toneMappingExposure = before.exp; renderer.outputEncoding = before.enc;
+      Object.keys(m1TexCache3d).forEach(k => { m1TexCache3d[k].encoding = THREE.LinearEncoding; m1TexCache3d[k].needsUpdate = true; });
       renderer.shadowMap.enabled = before.sh; renderer.shadowMap.type = before.sht;
       renderer.setPixelRatio(before.pr);
       const cw = canvas.clientWidth || before.w || 600, ch = before.h || canvas3dTargetHeight();
