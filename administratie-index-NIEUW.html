@@ -169,6 +169,15 @@
     position:fixed; inset:0; background:rgba(43,33,22,0.45); display:flex;
     align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; z-index:100;
   }
+  .modal.modal-breed{max-width:760px; max-height:90vh; overflow-y:auto;}
+  .btn-ai{border-color:var(--copper); color:var(--copper-dark);}
+  .ai-spinner{display:inline-block; width:12px; height:12px; border:2px solid var(--copper-bg); border-top-color:var(--copper); border-radius:50%; animation:ai-draai .8s linear infinite; vertical-align:-1px; margin-right:6px;}
+  @keyframes ai-draai{to{transform:rotate(360deg);}}
+  .ai-onderdeel{border:1px solid var(--copper-bg); border-radius:8px; padding:10px 12px; margin-bottom:10px;}
+  .ai-onderdeel-kop{display:flex; gap:6px; align-items:baseline; margin-bottom:6px;}
+  .ai-tabel{width:100%; font-size:13px;} .ai-tabel td{padding:3px 6px; border:none;} .ai-tabel td:first-child{width:46px; color:var(--text-muted);}
+  .ai-uren td{color:var(--copper-dark);}
+  .ai-kop{font-size:14px; font-weight:600; margin:14px 0 4px;} .ai-lijst{margin:0; padding-left:18px; font-size:13px;}
   .modal{background:var(--panel); border-radius:12px; width:100%; max-width:560px; padding:26px 28px 24px; box-shadow:0 12px 40px rgba(0,0,0,0.2);}
   .modal h2{font-family:var(--font-display); font-size:19px; font-weight:600; margin:0 0 18px 0;}
   .field{margin-bottom:14px;}
@@ -267,6 +276,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
 <script>
 /* ===================== FIREBASE ===================== */
 const firebaseConfig = {
@@ -280,6 +290,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const aiFuncties = firebase.app().functions('europe-west1');
 const secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary');
 const secondaryAuth = secondaryApp.auth();
 const WERKNEMER_EMAIL_DOMEIN = 'werknemer.intern';
@@ -1058,7 +1069,10 @@ function viewProjectDetail(id){
     <div id="onderdelen-container">
       ${p.begroting.onderdelen.map((o, idx)=> onderdeelBlock(o, idx)).join('')}
     </div>
-    <button class="btn" id="btn-onderdeel-toevoegen" style="margin:4px 0 22px;">+ Onderdeel toevoegen</button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 22px;">
+      <button class="btn" id="btn-onderdeel-toevoegen">+ Onderdeel toevoegen</button>
+      <button class="btn btn-ai" id="btn-begroting-ai">✦ Begroting met AI</button>
+    </div>
 
     <div class="panel" style="padding:18px 22px;">
       <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:600; margin:0 0 12px;">Totaaloverzicht project</h3>
@@ -1305,6 +1319,136 @@ function leesAlleOnderdelenUitDOM(p){
     if(block.querySelector('.onderdeel-zin') || (state.instellingen.offerteZinnen||[]).length===0){
       onderdeel.zinnen = Array.from(block.querySelectorAll('.onderdeel-zin:checked')).map(c=>c.value);
     }
+  });
+}
+
+/* ===================== AI-BEGROTING ===================== */
+let aiFotos = [];   // [{mediaType, data, naam}]
+function verkleinAfbeelding(file, maxZijde=1600){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      const schaal = Math.min(1, maxZijde / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*schaal); c.height = Math.round(img.height*schaal);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve({mediaType:'image/jpeg', data: c.toDataURL('image/jpeg', 0.82).split(',')[1], naam:file.name});
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Kon ' + file.name + ' niet lezen (alleen foto’s/afbeeldingen)')); };
+    img.src = url;
+  });
+}
+
+function openAIBegrotingModal(p){
+  aiFotos = [];
+  openModal(`
+    <h2>✦ Begroting met AI</h2>
+    <p class="info-line" style="margin:-4px 0 14px;">Beschrijf het werk zo concreet mogelijk. De AI gebruikt je materialenlijst, je kengetallen en je eerdere begrotingen, en maakt een voorstel dat je daarna zelf aanpast.</p>
+    <div class="field">
+      <label>Omschrijving van het werk</label>
+      <textarea id="ai-omschrijving" rows="7" placeholder="Bijv.: Wandkast in woonkamer, 3200 breed × 2600 hoog × 600 diep. 4 draaideuren in eiken fineer, binnenwerk wit melamine, 2 laden onderin, legplanken verstelbaar. Greeploos met push-to-open. Plaatsen in Rotterdam, 1e verdieping."></textarea>
+    </div>
+    <div class="field">
+      <label>Foto’s of schetsen (optioneel, max. 4)</label>
+      <input type="file" id="ai-fotos" accept="image/*" multiple>
+      <div id="ai-fotos-lijst" class="info-line" style="margin-top:6px;"></div>
+    </div>
+    <div id="ai-status" class="info-line" style="min-height:20px;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="ai-annuleren">Annuleren</button>
+      <button type="button" class="btn btn-primary" id="ai-genereer">Voorstel maken</button>
+    </div>
+  `);
+  document.querySelector('#modal-root .modal').classList.add('modal-breed');
+  document.getElementById('ai-annuleren').addEventListener('click', closeModal);
+  document.getElementById('ai-fotos').addEventListener('change', async (e)=>{
+    const lijst = document.getElementById('ai-fotos-lijst');
+    try{
+      for(const f of [...e.target.files]){
+        if(aiFotos.length >= 4) break;
+        aiFotos.push(await verkleinAfbeelding(f));
+      }
+    }catch(err){ showToast(err.message); }
+    e.target.value = '';
+    lijst.textContent = aiFotos.length ? aiFotos.map(f=>f.naam).join(', ') : '';
+  });
+  document.getElementById('ai-genereer').addEventListener('click', ()=> genereerAIBegroting(p));
+}
+
+async function genereerAIBegroting(p){
+  const omschrijving = document.getElementById('ai-omschrijving').value.trim();
+  if(!omschrijving && !aiFotos.length){ showToast('Vul een omschrijving in of voeg een foto toe'); return; }
+  const knop = document.getElementById('ai-genereer');
+  const status = document.getElementById('ai-status');
+  knop.disabled = true; knop.textContent = 'Bezig…';
+  status.innerHTML = '<span class="ai-spinner"></span> De AI rekent het werk door. Dit duurt meestal 20 tot 60 seconden.';
+  try{
+    const roep = aiFuncties.httpsCallable('begrotingMetAI', {timeout: 180000});
+    const res = await roep({
+      omschrijving,
+      projectId: p.id,
+      projectNaam: p.omschrijving || '',
+      afbeeldingen: aiFotos.map(f=>({mediaType:f.mediaType, data:f.data})),
+    });
+    toonAIVoorstel(p, res.data, omschrijving);
+  }catch(err){
+    knop.disabled = false; knop.textContent = 'Opnieuw proberen';
+    let melding = err.message || String(err);
+    if(err.code === 'functions/not-found' || /not.?found/i.test(melding)) melding = 'De AI-functie is nog niet online gezet. Volg eerst het stappenplan.';
+    status.innerHTML = `<span style="color:var(--rust);">${esc(melding)}</span>`;
+  }
+}
+
+function toonAIVoorstel(p, voorstel, omschrijving){
+  const onderdelen = (voorstel.onderdelen||[]).map(o=>({
+    id: uid(), naam: o.naam, afmetingen: o.afmetingen||'',
+    materiaalregels: (o.materiaalregels||[]).map(r=>({id:uid(), aantal:r.aantal, omschrijving:r.omschrijving, prijs:r.prijs, uitLijst:r.uitLijst})),
+    urenregels: (o.urenregels||[]).map(r=>({id:uid(), omschrijving:r.omschrijving, urenVoorbereiding:r.urenVoorbereiding, urenMontage:r.urenMontage})),
+  }));
+  const totaal = berekenBegroting({onderdelen});
+  const geschat = onderdelen.reduce((n,o)=> n + o.materiaalregels.filter(r=>!r.uitLijst).length, 0);
+  const lijstje = (titel, items)=> items && items.length ? `<h3 class="ai-kop">${titel}</h3><ul class="ai-lijst">${items.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>` : '';
+
+  document.querySelector('#modal-root .modal').innerHTML = `
+    <h2>✦ Voorstel van de AI</h2>
+    <p class="info-line" style="margin:-4px 0 12px;">${onderdelen.length} ${onderdelen.length===1?'onderdeel':'onderdelen'} · ${totaal.uren.toFixed(1)} uur · <b>${euro(totaal.excl)}</b> excl. btw (${euro(totaal.incl)} incl.)</p>
+    <div class="ai-voorstel">
+      ${onderdelen.map(o=>{
+        const b = berekenOnderdeel(o);
+        return `<div class="ai-onderdeel">
+          <div class="ai-onderdeel-kop"><b>${esc(o.naam)}</b>${o.afmetingen? ` <span class="info-line">· ${esc(o.afmetingen)}</span>`:''}<span style="margin-left:auto;">${euro(b.aanneemsomExcl)}</span></div>
+          <table class="ai-tabel">
+            ${o.materiaalregels.map(r=>`<tr><td>${r.aantal}</td><td>${esc(r.omschrijving)}${r.uitLijst? '' : ' <span class="badge badge-gray" title="Niet in je materialenlijst — prijs is geschat">prijs geschat</span>'}</td><td style="text-align:right;">${euro(r.prijs)}</td></tr>`).join('')}
+            ${o.urenregels.map(r=>`<tr class="ai-uren"><td></td><td>${esc(r.omschrijving)}</td><td style="text-align:right; white-space:nowrap;">${[r.urenVoorbereiding? r.urenVoorbereiding+'u werkplaats':'', r.urenMontage? r.urenMontage+'u montage':''].filter(Boolean).join(' · ') || '0u'}</td></tr>`).join('')}
+          </table>
+        </div>`;
+      }).join('')}
+      ${lijstje('Aannames', voorstel.aannames)}
+      ${lijstje('Navragen bij de klant', voorstel.vragen)}
+    </div>
+    ${geschat ? `<p class="info-line" style="margin-top:10px;">${geschat} materiaal(en) staan niet in je materialenlijst; die prijzen zijn geschat. Controleer ze voordat je de offerte maakt.</p>` : ''}
+    <div class="modal-actions">
+      <button type="button" class="btn" id="ai-terug">Annuleren</button>
+      <button type="button" class="btn btn-primary" id="ai-toevoegen">Toevoegen aan begroting</button>
+    </div>
+  `;
+  document.getElementById('ai-terug').addEventListener('click', closeModal);
+  document.getElementById('ai-toevoegen').addEventListener('click', async ()=>{
+    onderdelen.forEach(o=>{
+      o.materiaalregels = o.materiaalregels.map(r=>({id:r.id, aantal:r.aantal, omschrijving: r.uitLijst ? r.omschrijving : r.omschrijving + ' (prijs geschat)', prijs:r.prijs}));
+      p.begroting.onderdelen.push(o);
+    });
+    const notities = [];
+    if(voorstel.aannames && voorstel.aannames.length) notities.push('AI-aannames: ' + voorstel.aannames.join('; '));
+    if(voorstel.vragen && voorstel.vragen.length) notities.push('Navragen: ' + voorstel.vragen.join('; '));
+    if(notities.length) p.begroting.opmerkingen = [p.begroting.opmerkingen, ...notities].filter(Boolean).join('\n');
+    if(p.status === 'Nieuw') p.status = 'In begroting';
+    await saveState();
+    closeModal();
+    showToast('AI-voorstel toegevoegd aan de begroting — controleer en pas aan waar nodig');
+    render();
   });
 }
 
@@ -1773,6 +1917,11 @@ function attachViewHandlers(){
       render();
     });
 
+    document.getElementById('btn-begroting-ai').addEventListener('click', ()=>{
+      leesAlleOnderdelenUitDOM(p);
+      openAIBegrotingModal(p);
+    });
+
     document.getElementById('btn-begroting-opslaan').addEventListener('click', async ()=>{
       leesAlleOnderdelenUitDOM(p);
       p.begroting.opmerkingen = document.getElementById('begroting-opmerkingen').value;
@@ -2126,6 +2275,8 @@ function attachViewHandlers(){
       i.materiaalmarge = parseFloat(document.getElementById('inst-marge').value)||0;
       i.kantoorkosten = parseFloat(document.getElementById('inst-kantoorkosten').value)||0;
       i.btw = parseFloat(document.getElementById('inst-btw').value)||0;
+      const aiInstr = document.getElementById('inst-ai-instructies');
+      if(aiInstr) i.aiInstructies = aiInstr.value;
       i.bedrijfsnaam = document.getElementById('inst-bedrijfsnaam').value;
       i.adres = document.getElementById('inst-adres').value;
       i.postcode = document.getElementById('inst-postcode').value;
@@ -2449,6 +2600,12 @@ function viewInstellingen(){
       <div class="field"><label>Materiaalmarge (%)</label><input type="number" step="0.1" id="inst-marge" value="${i.materiaalmarge}"></div>
       <div class="field"><label>Kantoorkosten (% over materiaal + uren)</label><input type="number" step="0.1" id="inst-kantoorkosten" value="${i.kantoorkosten}"></div>
       <div class="field"><label>Btw (%)</label><input type="number" step="0.1" id="inst-btw" value="${i.btw}"></div>
+    </div>
+
+    <h2 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 10px;">AI-begroting</h2>
+    <p class="page-sub" style="margin-top:-2px;">Vaste afspraken die de AI altijd meeneemt bij het maken van een begroting</p>
+    <div class="panel" style="padding:22px; max-width:640px; margin-bottom:24px;">
+      <div class="field"><label>Werkwijze en vuistregels</label><textarea id="inst-ai-instructies" rows="6" placeholder="Bijv.:&#10;- Standaard binnenwerk: wit melamine 18mm&#10;- Montage altijd met 2 man, minimaal 4 uur&#10;- Transport binnen 30 km: 1 uur extra&#10;- Spuitwerk besteden we uit, reken € 45 per m²">${esc(i.aiInstructies||'')}</textarea></div>
     </div>
 
     <h2 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 10px;">Bedrijfsgegevens</h2>
