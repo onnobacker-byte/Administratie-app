@@ -7469,6 +7469,8 @@ function exportCabinetSTLBase64(){
   try{
     showRoom = false; currentView = '3d';
     build3dModel();
+    // de 3D-weergave draait het model mee met de muis: voor de export altijd onverdraaid (voorkant naar voren)
+    modelGroup.rotation.set(0, 0, 0);
     modelGroup.updateMatrixWorld(true);
     const SCALE = 10; // cm -> mm
     const tmpV = new THREE.Vector3();
