@@ -5091,6 +5091,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         door.material.color.multiplyScalar(0.9);
         door.position.set(dx, centerY, frontZ+0.9);
         door.userData.moduleName = doorModuleName; // voor de STL-export: deur hoort bij het vak waar hij begint
+        door.userData.isFront = true;
         group.add(door);
         const doorEdges = new THREE.LineSegments(new THREE.EdgesGeometry(door.geometry), new THREE.LineBasicMaterial({color:0x151513, transparent:true, opacity: ledPreviewActive ? 0.25 : 0.6}));
         doorEdges.position.copy(door.position);
@@ -5112,6 +5113,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
             : Math.max(centerY-spanH/2+5, Math.min(centerY+spanH/2-5, centerY + spanH/2 - span.handleY));
           handle.position.set(horizHandle ? dx : handleX, handleWorldY, frontZ+2.4);
           handle.userData.moduleName = doorModuleName;
+          handle.userData.isFront = true;
           group.add(handle);
         }
       }
@@ -7512,6 +7514,7 @@ function stlCollect(){
         const ac = new THREE.Vector3(c[0]-a[0], c[1]-a[1], c[2]-a[2]);
         const n = new THREE.Vector3().crossVectors(ab, ac).normalize();
         const tri = [n.x, n.y, n.z].concat(a, b, c);
+        if(obj.userData && obj.userData.isFront) tri.fr = true; // deur/handgreep: niet mee in de buitenmaat van de module
         tri.m = meshId; tri.f = isBox ? meshId + ':' + (i/6 | 0) : meshId + ':' + i; // mesh + vlak (een box = 6 vlakken van elk 2 driehoeken)
         list.push(tri); all.push(tri);
       }
@@ -7725,7 +7728,7 @@ function exportCabinetModulesZipBase64(){
     lines.push(n + ':  breed ' + r1(q.w) + '  hoog ' + r1(q.h) + '  diep ' + r1(q.d) + '   |   links ' + r1(q.x) + '  onder ' + r1(q.y) + '  achter voorkant ' + r1(q.z));
     if(inf) lines.push('      ' + [inf.inhoud, inf.deuren, 'kleur ' + inf.kleur].filter(Boolean).join(' | '));
   });
-  lines.push('', 'In de map plaatshouders staat per module een eenvoudig blok met precies de buitenmaat van die module, op de juiste plek.', 'Daar kun je de module uit je bibliotheek voor in de plaats zetten (Vervangen). De bestandsnaam bevat de maat.');  // tekening: voorzicht (breedte x hoogte) en bovenaanzicht (breedte x diepte), elk vak als rechthoek met naam
+  lines.push('', 'In de map plaatshouders staat per module een eenvoudig blok met precies de maat van de module (breed x hoog x diep van de kast zelf, zonder de deur en handgreep die er aan de voorkant bovenop zitten), op de juiste plek.', 'Daar kun je de module uit je bibliotheek voor in de plaats zetten (Vervangen). De bestandsnaam bevat de maat.');  // tekening: voorzicht (breedte x hoogte) en bovenaanzicht (breedte x diepte), elk vak als rechthoek met naam
   const W = G.mx[0]-G.mn[0], H = G.mx[1]-G.mn[1], D = G.mx[2]-G.mn[2];
   const sc = 600 / Math.max(W, H, 1), pad = 30;
   const fw = W*sc, fh = H*sc, dh = D*sc;
@@ -7763,7 +7766,8 @@ function exportCabinetModulesZipBase64(){
     );
   };
   const holders = names.filter(n => n !== 'overig').map(n => {
-    const b = bbox(c.parts[n]), w = r1(b.mx[0]-b.mn[0]), h = r1(b.mx[1]-b.mn[1]), d = r1(b.mx[2]-b.mn[2]);
+    // buitenmaat van de module = de kast zelf, zonder deur en handgreep (die komen er aan de voorkant bovenop)
+    const body = c.parts[n].filter(t => !t.fr), b = bbox(body.length ? body : c.parts[n]), w = r1(b.mx[0]-b.mn[0]), h = r1(b.mx[1]-b.mn[1]), d = r1(b.mx[2]-b.mn[2]);
     return { name: 'plaatshouders/' + n + '_' + w + 'x' + h + 'x' + d + '.stl', data: new Uint8Array(stlTrianglesToBuffer(blockTris(b))) };
   });
   const files = [{ name: '00-hele-kast.stl', data: new Uint8Array(stlTrianglesToBuffer(c.all)) }]
