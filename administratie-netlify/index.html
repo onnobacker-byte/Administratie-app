@@ -397,6 +397,7 @@ function normaliseerState(){
   if(state.instellingen.logoBase64===undefined) state.instellingen.logoBase64 = DEFAULT_LOGO_BASE64;
   if(state.instellingen.logoMime===undefined) state.instellingen.logoMime = 'image/jpeg';
   if(state.instellingen.pincodeHash===undefined) state.instellingen.pincodeHash = '';
+  if(!Array.isArray(state.instellingen.offerteZinnen)) state.instellingen.offerteZinnen = [];
   state.klanten.forEach(k=>{ if(k.contactpersoon===undefined) k.contactpersoon = ''; });
   state.offertes.forEach(o=>{ if(o.uwKenmerk===undefined) o.uwKenmerk=''; if(o.behandelaar===undefined) o.behandelaar=''; });
   state.facturen.forEach(f=>{ if(f.uwKenmerk===undefined) f.uwKenmerk=''; if(f.behandelaar===undefined) f.behandelaar=''; if(!f.type) f.type='standaard'; });
@@ -424,6 +425,12 @@ function normaliseerState(){
       if(!o.materiaalregels) o.materiaalregels = [];
       if(o.afmetingen===undefined) o.afmetingen = '';
       if(!o.urenregels) o.urenregels = [];
+      // velden voor de automatische offertetekst
+      if(o.kopje===undefined) o.kopje = '';
+      if(!(parseFloat(o.aantal) > 0)) o.aantal = 1;
+      if(o.maatAanduiding===undefined) o.maatAanduiding = 'bxdxh';
+      if(!Array.isArray(o.zinnen)) o.zinnen = [];
+      if(o.vrijeTekst===undefined) o.vrijeTekst = '';
     });
   });
 }
@@ -540,18 +547,54 @@ function berekenBegroting(begroting){
   let inkoop=0, verkoop=0, uren=0, kantoorkosten=0, excl=0, incl=0;
   begroting.onderdelen.forEach(o=>{
     const b = berekenOnderdeel(o);
-    inkoop+=b.inkoop; verkoop+=b.verkoop; uren+=b.uren; kantoorkosten+=b.kantoorkosten; excl+=b.aanneemsomExcl; incl+=b.aanneemsomIncl;
+    const n = onderdeelAantal(o); // de begroting van een onderdeel is per stuk
+    inkoop+=b.inkoop*n; verkoop+=b.verkoop*n; uren+=b.uren*n; kantoorkosten+=b.kantoorkosten*n; excl+=b.aanneemsomExcl*n; incl+=b.aanneemsomIncl*n;
   });
   return {inkoop, verkoop, uren, kantoorkosten, excl, incl};
 }
 
-function bouwOnderdeelOmschrijving(o){
+function onderdeelAantal(o){ return parseFloat(o.aantal) > 0 ? parseFloat(o.aantal) : 1; }
+
+/* ---- Automatische offertetekst per onderdeel ----
+   Opbouw: afmetingen, aantal, de aangevinkte vaste zinnen, per materiaal de "tekst in offerte" (met het aantal
+   ervoor, bijv. "2 modules met elektrische kledinglift") en tot slot de vrije tekst van het onderdeel. */
+const MAAT_AANDUIDINGEN = ['bxdxh','bxhxd','lxdxh','lxbxh','hxbxd','lxb',''];
+function fmtAantal(n){ return Number.isInteger(n) ? String(n) : n.toLocaleString('nl-NL', {maximumFractionDigits:2}); }
+function materiaalBijNaam(naam){
+  const n = (naam||'').trim().toLowerCase();
+  return n ? state.materialen.find(m=> (m.naam||'').trim().toLowerCase() === n) : null;
+}
+function alsZin(tekst){
+  const t = (tekst||'').trim();
+  if(!t) return '';
+  const metHoofdletter = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?:;]$/.test(metHoofdletter) ? metHoofdletter : metHoofdletter + '.';
+}
+function bouwOnderdeelTekst(o){
   const regels = [];
-  if(o.afmetingen && o.afmetingen.trim()) regels.push(`Afmetingen: ${o.afmetingen.trim()}`);
-  const materialen = (o.materiaalregels||[]).map(r=>r.omschrijving).filter(m=>m && m.trim());
-  if(materialen.length) regels.push(`Materiaal: ${materialen.join(', ')}`);
-  if(!regels.length) return '';
-  return `${o.naam}\n${regels.map(r=>`- ${r}`).join('\n')}`;
+  const afm = (o.afmetingen||'').trim().replace(/\.$/, '');
+  if(afm) regels.push(`Afmetingen: ${afm}${o.maatAanduiding ? ` (${o.maatAanduiding})` : ''}.`);
+  const n = onderdeelAantal(o);
+  if(n !== 1) regels.push(`Aantal: ${fmtAantal(n)} stuks.`);
+  const zinnen = state.instellingen.offerteZinnen || [];
+  zinnen.filter(z=> (o.zinnen||[]).includes(z.id)).forEach(z=>{ if(alsZin(z.tekst)) regels.push(alsZin(z.tekst)); });
+  // zelfde materiaal op meerdere regels: aantallen optellen, volgorde van de begroting aanhouden
+  const perMateriaal = [];
+  (o.materiaalregels||[]).forEach(r=>{
+    const m = materiaalBijNaam(r.omschrijving);
+    if(!m || !(m.offertetekst||'').trim()) return;
+    const bestaand = perMateriaal.find(x=> x.m.id === m.id);
+    if(bestaand) bestaand.aantal += parseFloat(r.aantal)||0;
+    else perMateriaal.push({m, aantal: parseFloat(r.aantal)||0});
+  });
+  perMateriaal.forEach(({m, aantal})=>{
+    const enkel = m.offertetekst.trim();
+    const meer = (m.offertetekstMeervoud||'').trim() || enkel;
+    if(m.offerteMetAantal === false || !aantal) regels.push(alsZin(enkel));
+    else regels.push(alsZin(`${fmtAantal(aantal)} ${aantal === 1 ? enkel : meer}`));
+  });
+  (o.vrijeTekst||'').split('\n').map(r=>r.trim()).filter(Boolean).forEach(r=> regels.push(r));
+  return regels.join('\n');
 }
 
 function openMailtoKlant(klant, onderwerp, tekst){
@@ -1024,7 +1067,8 @@ function viewProjectDetail(id){
         <tbody id="totaaloverzicht-body">
           ${p.begroting.onderdelen.map(o=>{
             const b = berekenOnderdeel(o);
-            return `<tr><td>${esc(o.naam)}</td><td style="text-align:right;">${euro(b.aanneemsomExcl)}</td><td style="text-align:right;">${euro(b.aanneemsomIncl)}</td></tr>`;
+            const n = onderdeelAantal(o);
+            return `<tr><td>${esc(o.naam)}${n!==1 ? ` (${fmtAantal(n)}x)` : ''}</td><td style="text-align:right;">${euro(b.aanneemsomExcl*n)}</td><td style="text-align:right;">${euro(b.aanneemsomIncl*n)}</td></tr>`;
           }).join('') || `<tr><td colspan="3" style="color:var(--text-muted);">Nog geen onderdelen toegevoegd</td></tr>`}
         </tbody>
       </table>
@@ -1106,14 +1150,26 @@ function onderdeelBlock(o, idx){
   const b = berekenOnderdeel(o);
   return `
     <div class="panel" style="padding:18px; margin-bottom:16px;" data-onderdeel-id="${o.id}">
-      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; gap:10px;">
-        <div class="field" style="margin-bottom:0; flex:1; max-width:280px;">
-          <label>Naam onderdeel</label>
-          <input type="text" class="onderdeel-naam" value="${esc(o.naam)}" placeholder="Bijv. kast 1 bijkamer">
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="margin-bottom:0; flex:1; min-width:150px; max-width:200px;">
+          <label>Kopje (optioneel)</label>
+          <input type="text" class="onderdeel-kopje" value="${esc(o.kopje||'')}" placeholder="Bijv. kasten bijkamer">
         </div>
-        <div class="field" style="margin-bottom:0; flex:1; max-width:240px;">
+        <div class="field" style="margin-bottom:0; flex:1; min-width:180px; max-width:260px;">
+          <label>Naam onderdeel</label>
+          <input type="text" class="onderdeel-naam" value="${esc(o.naam)}" placeholder="Bijv. Kast 1 (hoekopstelling)">
+        </div>
+        <div class="field" style="margin-bottom:0; width:80px;">
+          <label>Aantal</label>
+          <input type="number" step="1" min="1" class="onderdeel-aantal" value="${onderdeelAantal(o)}">
+        </div>
+        <div class="field" style="margin-bottom:0; flex:1; min-width:180px; max-width:260px;">
           <label>Afmetingen</label>
-          <input type="text" class="onderdeel-afmetingen" value="${esc(o.afmetingen||'')}" placeholder="Bijv. 890 x 525 x 10 mm">
+          <input type="text" class="onderdeel-afmetingen" value="${esc(o.afmetingen||'')}" placeholder="Bijv. 2418mm x 600mm x 3219mm">
+        </div>
+        <div class="field" style="margin-bottom:0; width:100px;">
+          <label>Maten</label>
+          <select class="onderdeel-maat">${MAAT_AANDUIDINGEN.map(m=>`<option value="${m}" ${m===(o.maatAanduiding||'')?'selected':''}>${m || '(geen)'}</option>`).join('')}</select>
         </div>
         <button class="btn btn-ghost btn-sm btn-danger" data-del-onderdeel="${o.id}">Onderdeel verwijderen</button>
       </div>
@@ -1147,10 +1203,38 @@ function onderdeelBlock(o, idx){
         <div class="totals-row"><span>Materiaal verkoop</span><span class="onderdeel-verkoop">${euro(b.verkoop)}</span></div>
         <div class="totals-row"><span>Uren (${b.uren.toFixed(2)} u)</span><span class="onderdeel-euro-uren">${euro(b.euroUren)}</span></div>
         <div class="totals-row"><span>Kantoorkosten</span><span class="onderdeel-kantoorkosten">${euro(b.kantoorkosten)}</span></div>
-        <div class="totals-row grand"><span>Aanneemsom excl. btw</span><span class="onderdeel-excl">${euro(b.aanneemsomExcl)}</span></div>
+        <div class="totals-row grand"><span>Aanneemsom excl. btw${onderdeelAantal(o)!==1 ? ' (per stuk)' : ''}</span><span class="onderdeel-excl">${euro(b.aanneemsomExcl)}</span></div>
+      </div>
+
+      <h4 style="font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--text-muted); font-weight:600; margin:20px 0 8px;">Tekst in de offerte</h4>
+      ${zinnenKeuzeHtml(o)}
+      <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+        <div class="field" style="flex:1; min-width:260px; margin-bottom:0;">
+          <label>Extra zinnen (alleen voor dit onderdeel, één per regel)</label>
+          <textarea class="onderdeel-vrijetekst" rows="4" placeholder="Bijv. Bureaublad voorzien van 4 wcd's.">${esc(o.vrijeTekst||'')}</textarea>
+        </div>
+        <div style="flex:1; min-width:260px;">
+          <label style="display:block; font-size:12.5px; color:var(--text-muted); margin-bottom:4px;">Zo komt het in de offerte</label>
+          <pre class="onderdeel-voorbeeld" style="white-space:pre-wrap; font-family:inherit; font-size:13px; background:var(--sidebar-bg); padding:10px 12px; border-radius:6px; margin:0; min-height:60px;">${esc(onderdeelVoorbeeldTekst(o))}</pre>
+        </div>
       </div>
     </div>
   `;
+}
+
+function zinnenKeuzeHtml(o){
+  const zinnen = state.instellingen.offerteZinnen || [];
+  if(!zinnen.length) return `<p class="info-line" style="margin:0 0 10px;">Vaste zinnen (bijv. over het materiaal of het pushed open systeem) maak je één keer aan onder <a class="breadcrumb" data-nav="materialen" style="display:inline;">Materialen</a>; daarna vink je ze hier aan.</p>`;
+  return `<div style="display:flex; flex-direction:column; gap:4px; margin:0 0 12px;">
+    ${zinnen.map(z=>`<label style="display:flex; gap:8px; align-items:flex-start; font-size:13px; cursor:pointer;">
+      <input type="checkbox" class="onderdeel-zin" value="${z.id}" ${(o.zinnen||[]).includes(z.id)?'checked':''} style="margin-top:3px;">
+      <span>${esc(z.tekst)}</span></label>`).join('')}
+  </div>`;
+}
+function onderdeelVoorbeeldTekst(o){
+  const tekst = bouwOnderdeelTekst(o);
+  const titel = (o.kopje||'').trim() ? `${o.kopje.trim().toUpperCase()}\n${o.naam||''}` : (o.naam||'').toUpperCase();
+  return tekst ? `${titel}\n${tekst}` : `${titel}\n(geen tekst: komt in de offerte als losse prijsregel, bijv. Transport en montage)`;
 }
 
 function materiaalRegelRow(r){
@@ -1210,10 +1294,29 @@ function leesAlleOnderdelenUitDOM(p){
     if(naamInput) onderdeel.naam = naamInput.value;
     const afmetingenInput = block.querySelector('.onderdeel-afmetingen');
     if(afmetingenInput) onderdeel.afmetingen = afmetingenInput.value;
+    const kopjeInput = block.querySelector('.onderdeel-kopje');
+    if(kopjeInput) onderdeel.kopje = kopjeInput.value;
+    const aantalInput = block.querySelector('.onderdeel-aantal');
+    if(aantalInput) onderdeel.aantal = parseFloat(aantalInput.value) > 0 ? parseFloat(aantalInput.value) : 1;
+    const maatInput = block.querySelector('.onderdeel-maat');
+    if(maatInput) onderdeel.maatAanduiding = maatInput.value;
+    const vrijInput = block.querySelector('.onderdeel-vrijetekst');
+    if(vrijInput) onderdeel.vrijeTekst = vrijInput.value;
+    if(block.querySelector('.onderdeel-zin') || (state.instellingen.offerteZinnen||[]).length===0){
+      onderdeel.zinnen = Array.from(block.querySelectorAll('.onderdeel-zin:checked')).map(c=>c.value);
+    }
   });
 }
 
 /* ===================== OFFERTES ===================== */
+function offerteRegelUitOnderdeel(o){
+  const b = berekenOnderdeel(o);
+  return { id: uid(), onderdeelId: o.id, kopje: (o.kopje||'').trim(), omschrijving: o.naam, tekst: bouwOnderdeelTekst(o),
+    aantal: onderdeelAantal(o), eenheid: 'stuk', prijs: +b.aanneemsomExcl.toFixed(2) };
+}
+const OFFERTE_AANLEIDINGEN = ['uw aanvraag','het gesprek','uw e-mail','ons telefoongesprek'];
+const OFFERTE_WERKZAAMHEDEN = ['fabriceren, leveren en plaatsen','fabriceren en leveren','leveren en plaatsen','leveren'];
+
 function offerteTotalen(o){
   const sub = subtotaal(o.regels);
   const btw = sub * (o.btw/100);
@@ -1281,19 +1384,24 @@ function viewOfferteDetail(id){
       <div class="field"><label>Behandeld door</label><input type="text" id="offerte-behandelaar" value="${esc(o.behandelaar || state.instellingen.ondertekenaar || '')}"></div>
     </div>
 
+    ${o.opmaak===2 ? offerteOptiesHtml(o) : `
     <div class="field" style="max-width:640px; margin-bottom:18px;">
       <label>Omschrijving werkzaamheden (afmetingen &amp; materiaal, komt in de offerte)</label>
       <textarea id="offerte-omschrijving" rows="5" placeholder="Wordt automatisch gevuld vanuit de begroting; hier nog aan te passen.">${esc(o.omschrijvingText||'')}</textarea>
-    </div>
+    </div>`}
 
     <div class="panel" style="padding:18px;">
       <table class="regels-table">
         <thead><tr><th style="width:40%">Omschrijving</th><th style="width:14%">Aantal</th><th style="width:14%">Eenheid</th><th style="width:16%">Prijs / eenheid</th><th style="width:16%">Totaal</th><th></th></tr></thead>
         <tbody id="offerte-regels-body">
-          ${o.regels.map(r=>offerteRegelRow(r)).join('')}
+          ${o.regels.map(r=>offerteRegelRow(r, o.opmaak===2)).join('')}
         </tbody>
       </table>
-      <button class="btn btn-sm" id="btn-offerte-regel-toevoegen" style="margin-top:10px;">+ Regel toevoegen</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn btn-sm" id="btn-offerte-regel-toevoegen">+ Regel toevoegen</button>
+        ${o.opmaak===2 && p ? `<button class="btn btn-sm" id="btn-offerte-tekst-opnieuw" title="Haalt de teksten en prijzen opnieuw uit de begroting van het project">Opnieuw uit begroting halen</button>` : ''}
+      </div>
+      ${o.opmaak===2 ? `<p class="info-line" style="margin-top:8px;">Een regel <b>met</b> tekst komt in de offerte als onderdeel met omschrijving en de prijs eronder. Een regel <b>zonder</b> tekst (bijv. Transport en montage) komt als losse prijsregel.</p>` : ''}
 
       <div class="totals-box">
         <div class="totals-row"><span>Subtotaal</span><span id="offerte-subtotaal">${euro(t.subtotaal)}</span></div>
@@ -1333,9 +1441,40 @@ function viewOfferteDetail(id){
   `;
 }
 
-function offerteRegelRow(r){
+function offerteOptiesHtml(o){
+  const keuze = (id, lijst, waarde)=> `<select id="${id}">${(lijst.includes(waarde)||!waarde ? lijst : [waarde, ...lijst]).map(v=>`<option value="${esc(v)}" ${v===waarde?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
   return `
-    <tr data-regel-id="${r.id}">
+    <div class="panel" style="padding:16px 18px; margin-bottom:18px;">
+      <h3 style="font-size:14px; font-weight:600; margin:0 0 10px;">Opbouw van de offerte</h3>
+      <p class="info-line" style="margin:0 0 10px;">Naar aanleiding van <b>[1]</b>, doen wij u hierbij een vrijblijvende prijsopgave omtrent het <b>[2]</b> van <b>[3]</b>.</p>
+      <div class="field-row">
+        <div class="field"><label>[1] Naar aanleiding van</label>${keuze('offerte-aanleiding', OFFERTE_AANLEIDINGEN, o.aanleiding||'uw aanvraag')}</div>
+        <div class="field"><label>[2] Werkzaamheden</label>${keuze('offerte-werkzaamheden', OFFERTE_WERKZAAMHEDEN, o.werkzaamheden||OFFERTE_WERKZAAMHEDEN[0])}</div>
+      </div>
+      <div class="field"><label>[3] Onderwerp</label><input type="text" id="offerte-onderwerp" value="${esc(o.onderwerp||'')}" placeholder="Bijv. een aantal garderobekasten"></div>
+      <div class="field-row">
+        <div class="field"><label>Prijzen in de offerte</label>
+          <select id="offerte-incl"><option value="excl" ${!o.prijzenInclBtw?'selected':''}>exclusief btw (zakelijk)</option><option value="incl" ${o.prijzenInclBtw?'selected':''}>inclusief btw (particulier)</option></select></div>
+        <div class="field"><label>Totaalbedrag onderaan</label>
+          <select id="offerte-toontotaal"><option value="nee" ${!o.toonTotaal?'selected':''}>niet tonen</option><option value="ja" ${o.toonTotaal?'selected':''}>wel tonen</option></select></div>
+      </div>
+      <div class="field" style="margin-bottom:0;"><label>Betalingscondities (één per regel)</label><textarea id="offerte-betaling" rows="2">${esc(o.betalingscondities||'')}</textarea></div>
+    </div>`;
+}
+function leesOfferteOptiesUitDOM(o){
+  if(o.opmaak!==2) return;
+  const v = id=> document.getElementById(id);
+  if(v('offerte-aanleiding')) o.aanleiding = v('offerte-aanleiding').value;
+  if(v('offerte-werkzaamheden')) o.werkzaamheden = v('offerte-werkzaamheden').value;
+  if(v('offerte-onderwerp')) o.onderwerp = v('offerte-onderwerp').value;
+  if(v('offerte-incl')) o.prijzenInclBtw = v('offerte-incl').value === 'incl';
+  if(v('offerte-toontotaal')) o.toonTotaal = v('offerte-toontotaal').value === 'ja';
+  if(v('offerte-betaling')) o.betalingscondities = v('offerte-betaling').value;
+}
+
+function offerteRegelRow(r, metTekst){
+  return `
+    <tr data-regel-id="${r.id}" data-onderdeel-id="${esc(r.onderdeelId||'')}">
       <td><input type="text" class="regel-omschrijving" value="${esc(r.omschrijving)}" placeholder="Omschrijving"></td>
       <td><input type="number" step="0.01" class="regel-aantal" value="${r.aantal}"></td>
       <td><select class="regel-eenheid">${EENHEDEN.map(u=>`<option value="${u}" ${u===r.eenheid?'selected':''}>${u}</option>`).join('')}</select></td>
@@ -1343,20 +1482,36 @@ function offerteRegelRow(r){
       <td style="text-align:right; font-variant-numeric:tabular-nums;">${euro(regelTotaal(r))}</td>
       <td><button class="btn-ghost btn-sm" data-del-regel="${r.id}" style="border:none; background:none; color:var(--rust); cursor:pointer;">&times;</button></td>
     </tr>
+    ${metTekst ? `<tr class="regel-tekst-rij" data-tekst-voor="${r.id}">
+      <td colspan="6" style="padding-top:0; padding-bottom:14px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start;">
+          <input type="text" class="regel-kopje" value="${esc(r.kopje||'')}" placeholder="Kopje (optioneel)" style="width:200px;">
+          <textarea class="regel-tekst" rows="${Math.max(2, (r.tekst||'').split('\n').length + 2)}" placeholder="Tekst in de offerte (leeg = losse prijsregel)" style="flex:1; min-width:260px; font-family:inherit; font-size:13px;">${esc(r.tekst||'')}</textarea>
+        </div>
+      </td>
+    </tr>` : ''}
   `;
 }
 
 function readRegelsFromDOM(containerId){
-  const rows = document.querySelectorAll('#' + containerId + ' tr');
+  const rows = document.querySelectorAll('#' + containerId + ' tr[data-regel-id]');
   const regels = [];
   rows.forEach(row=>{
-    regels.push({
+    const regel = {
       id: row.dataset.regelId,
       omschrijving: row.querySelector('.regel-omschrijving').value,
       aantal: parseFloat(row.querySelector('.regel-aantal').value) || 0,
       eenheid: row.querySelector('.regel-eenheid').value,
       prijs: parseFloat(row.querySelector('.regel-prijs').value) || 0,
-    });
+    };
+    // offerteregels met eigen tekst (nieuwe opmaak): kopje en tekst staan in de rij eronder
+    const tekstRij = document.querySelector(`#${containerId} tr[data-tekst-voor="${regel.id}"]`);
+    if(tekstRij){
+      regel.kopje = tekstRij.querySelector('.regel-kopje').value;
+      regel.tekst = tekstRij.querySelector('.regel-tekst').value;
+      regel.onderdeelId = row.dataset.onderdeelId || '';
+    }
+    regels.push(regel);
   });
   return regels;
 }
@@ -1527,6 +1682,8 @@ function attachViewHandlers(){
         block.querySelector('.onderdeel-euro-uren').textContent = euro(b.euroUren);
         block.querySelector('.onderdeel-kantoorkosten').textContent = euro(b.kantoorkosten);
         block.querySelector('.onderdeel-excl').textContent = euro(b.aanneemsomExcl);
+        const voorbeeld = block.querySelector('.onderdeel-voorbeeld');
+        if(voorbeeld) voorbeeld.textContent = onderdeelVoorbeeldTekst(o);
         block.querySelectorAll('.materiaal-regels-body tr').forEach(row=>{
           const r = { aantal: parseFloat(row.querySelector('.regel-aantal').value)||0, prijs: parseFloat(row.querySelector('.regel-prijs').value)||0 };
           row.querySelector('.regel-verkoop-cel').textContent = euro(berekenMateriaalRegel(r).verkoop);
@@ -1540,14 +1697,20 @@ function attachViewHandlers(){
       document.getElementById('project-totaal-excl').textContent = euro(totaal.excl);
       document.getElementById('project-totaal-incl').textContent = euro(totaal.incl);
       main.querySelectorAll('#totaaloverzicht-body tr td:nth-child(2)').forEach((cell,idx)=>{
-        const b = berekenOnderdeel(p.begroting.onderdelen[idx]);
-        cell.textContent = euro(b.aanneemsomExcl);
-        cell.nextElementSibling.textContent = euro(b.aanneemsomIncl);
+        const od = p.begroting.onderdelen[idx];
+        const b = berekenOnderdeel(od);
+        const n = onderdeelAantal(od);
+        cell.textContent = euro(b.aanneemsomExcl*n);
+        cell.nextElementSibling.textContent = euro(b.aanneemsomIncl*n);
       });
     }
 
     function bindOnderdeelInputs(){
       main.querySelectorAll('.materiaal-regels-body input, .uren-regels-body input').forEach(el=> el.addEventListener('input', herbereken));
+      main.querySelectorAll('.onderdeel-kopje, .onderdeel-naam, .onderdeel-aantal, .onderdeel-afmetingen, .onderdeel-maat, .onderdeel-vrijetekst, .onderdeel-zin').forEach(el=>{
+        el.addEventListener('input', herbereken);
+        el.addEventListener('change', herbereken);
+      });
       main.querySelectorAll('.materiaal-regels-body .regel-omschrijving').forEach(el=>{
         el.addEventListener('input', (e)=>{
           const materiaal = state.materialen.find(m=> m.naam===e.target.value);
@@ -1606,7 +1769,7 @@ function attachViewHandlers(){
 
     document.getElementById('btn-onderdeel-toevoegen').addEventListener('click', ()=>{
       leesAlleOnderdelenUitDOM(p);
-      p.begroting.onderdelen.push({id:uid(), naam:'Nieuw onderdeel', afmetingen:'', materiaalregels:[], urenregels:[]});
+      p.begroting.onderdelen.push({id:uid(), kopje:'', naam:'Nieuw onderdeel', aantal:1, afmetingen:'', maatAanduiding:'bxdxh', zinnen:[], vrijeTekst:'', materiaalregels:[], urenregels:[]});
       render();
     });
 
@@ -1636,11 +1799,15 @@ function attachViewHandlers(){
         geldigTot: addDays(todayISO(), 30),
         btw: state.instellingen.btw,
         status: 'Concept',
-        omschrijvingText: p.begroting.onderdelen.map(o=>bouwOnderdeelOmschrijving(o)).filter(Boolean).join('\n\n'),
-        regels: p.begroting.onderdelen.map(o=>{
-          const b = berekenOnderdeel(o);
-          return { id: uid(), omschrijving: o.naam, aantal: 1, eenheid: 'stuk', prijs: +b.aanneemsomExcl.toFixed(2) };
-        })
+        opmaak: 2, // offertetekst per onderdeel, met de prijs direct eronder
+        aanleiding: 'uw aanvraag',
+        werkzaamheden: 'fabriceren, leveren en plaatsen',
+        onderwerp: p.omschrijving || '',
+        prijzenInclBtw: false,
+        toonTotaal: false,
+        betalingscondities: state.instellingen.betalingscondities || '',
+        omschrijvingText: '',
+        regels: p.begroting.onderdelen.map(o=> offerteRegelUitOnderdeel(o))
       };
       state.offertes.push(offerte);
       p.status = 'Offerte verzonden';
@@ -1733,12 +1900,29 @@ function attachViewHandlers(){
     document.getElementById('offerte-status-select').addEventListener('change', async (e)=>{
       o.status = e.target.value; await saveState(); showToast('Status bijgewerkt');
     });
-    document.getElementById('btn-export-word').addEventListener('click', ()=>{
+    // leest alles wat op het scherm is ingevuld in de offerte (ook bij de nieuwe opmaak met tekst per regel)
+    function leesOfferteFormulier(){
       o.regels = readRegelsFromDOM('offerte-regels-body');
       o.uwKenmerk = document.getElementById('offerte-uwkenmerk').value;
       o.behandelaar = document.getElementById('offerte-behandelaar').value;
-      o.omschrijvingText = document.getElementById('offerte-omschrijving').value;
+      const omschrijvingVeld = document.getElementById('offerte-omschrijving');
+      if(omschrijvingVeld) o.omschrijvingText = omschrijvingVeld.value;
+      leesOfferteOptiesUitDOM(o);
+    }
+    document.getElementById('btn-export-word').addEventListener('click', ()=>{
+      leesOfferteFormulier();
       exporteerOfferteNaarWord(o);
+    });
+    const tekstOpnieuwBtn = document.getElementById('btn-offerte-tekst-opnieuw');
+    if(tekstOpnieuwBtn) tekstOpnieuwBtn.addEventListener('click', ()=>{
+      const p = projectById(o.projectId);
+      if(!p) return;
+      if(!confirm('De teksten en prijzen van de onderdelen opnieuw uit de begroting halen? Wat je hier zelf in die teksten hebt aangepast, gaat dan verloren. Regels die je hier zelf hebt toegevoegd blijven staan.')) return;
+      leesOfferteFormulier();
+      const losseRegels = o.regels.filter(r=> !r.onderdeelId); // zelf toegevoegde regels blijven staan
+      o.regels = [...p.begroting.onderdelen.map(od=> offerteRegelUitOnderdeel(od)), ...losseRegels];
+      render();
+      showToast('Teksten opnieuw opgebouwd (nog niet opgeslagen)');
     });
     document.getElementById('btn-mail-offerte').addEventListener('click', ()=>{
       const proj = projectById(o.projectId);
@@ -1749,13 +1933,14 @@ function attachViewHandlers(){
     });
 
     document.getElementById('btn-offerte-regel-toevoegen').addEventListener('click', ()=>{
-      o.regels = readRegelsFromDOM('offerte-regels-body');
+      leesOfferteFormulier();
       o.regels.push({id:uid(), omschrijving:'', aantal:1, eenheid:'stuk', prijs:0});
       render();
     });
     main.querySelectorAll('[data-del-regel]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        o.regels = readRegelsFromDOM('offerte-regels-body').filter(r=>r.id!==btn.dataset.delRegel);
+        leesOfferteFormulier();
+        o.regels = o.regels.filter(r=>r.id!==btn.dataset.delRegel);
         render();
       });
     });
@@ -1765,7 +1950,7 @@ function attachViewHandlers(){
       document.getElementById('offerte-subtotaal').textContent = euro(t.subtotaal);
       document.getElementById('offerte-btw').textContent = euro(t.btw);
       document.getElementById('offerte-totaal').textContent = euro(t.totaal);
-      main.querySelectorAll('#offerte-regels-body tr').forEach(row=>{
+      main.querySelectorAll('#offerte-regels-body tr[data-regel-id]').forEach(row=>{
         const aantal = parseFloat(row.querySelector('.regel-aantal').value)||0;
         const prijs = parseFloat(row.querySelector('.regel-prijs').value)||0;
         row.children[4].textContent = euro(aantal*prijs);
@@ -1774,12 +1959,9 @@ function attachViewHandlers(){
     main.querySelectorAll('#offerte-regels-body input, #offerte-regels-body select').forEach(el=> el.addEventListener('input', herbereken));
 
     document.getElementById('btn-offerte-opslaan').addEventListener('click', async ()=>{
-      o.regels = readRegelsFromDOM('offerte-regels-body');
+      leesOfferteFormulier();
       o.datum = document.getElementById('offerte-datum').value;
       o.geldigTot = document.getElementById('offerte-geldigtot').value;
-      o.uwKenmerk = document.getElementById('offerte-uwkenmerk').value;
-      o.behandelaar = document.getElementById('offerte-behandelaar').value;
-      o.omschrijvingText = document.getElementById('offerte-omschrijving').value;
       await saveState();
       showToast('Offerte opgeslagen');
       render();
@@ -1804,7 +1986,7 @@ function attachViewHandlers(){
     if(btnStandaard) btnStandaard.addEventListener('click', async ()=>{
       o.regels = readRegelsFromDOM('offerte-regels-body');
       await saveState();
-      const factuur = { ...maakFactuurBasis('standaard'), regels: o.regels.map(r=>({...r, id: uid()})) };
+      const factuur = { ...maakFactuurBasis('standaard'), regels: o.regels.map(r=>({id: uid(), omschrijving: r.omschrijving, aantal: r.aantal, eenheid: r.eenheid, prijs: r.prijs})) };
       state.facturen.push(factuur);
       o.status = 'Geaccepteerd';
       const proj = projectById(o.projectId);
@@ -2109,6 +2291,25 @@ function attachViewHandlers(){
     });
     main.querySelectorAll('[data-del-materiaal]').forEach(btn=>{
       btn.addEventListener('click', ()=> verwijderMateriaal(btn.dataset.delMateriaal));
+    });
+    // vaste zinnen voor offertes (opgeslagen bij de instellingen)
+    const leesZinnen = ()=> Array.from(main.querySelectorAll('[data-zin-id]')).map(el=>({id: el.dataset.zinId, tekst: el.querySelector('.zin-tekst').value}));
+    document.getElementById('btn-zin-toevoegen').addEventListener('click', ()=>{
+      state.instellingen.offerteZinnen = [...leesZinnen(), {id: uid(), tekst: ''}];
+      render();
+      const velden = main.querySelectorAll('.zin-tekst');
+      if(velden.length) velden[velden.length-1].focus();
+    });
+    main.querySelectorAll('[data-del-zin]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Deze zin verwijderen? Bij onderdelen waar hij aangevinkt was, verdwijnt hij uit nieuwe offertes.')) return;
+        state.instellingen.offerteZinnen = leesZinnen().filter(z=> z.id !== btn.dataset.delZin);
+        await saveState(); render(); showToast('Zin verwijderd');
+      });
+    });
+    document.getElementById('btn-zinnen-opslaan').addEventListener('click', async ()=>{
+      state.instellingen.offerteZinnen = leesZinnen().map(z=>({id: z.id, tekst: z.tekst.trim()})).filter(z=> z.tekst);
+      await saveState(); render(); showToast('Vaste zinnen opgeslagen');
     });
   }
 
@@ -2461,6 +2662,7 @@ async function exporteerBegrotingNaarExcel(p){
       [o.naam],
       [`Klant: ${k? k.naam : ''}`, '', `Werknummer: ${p.id}`],
       o.afmetingen ? [`Afmetingen: ${o.afmetingen}`] : [],
+      onderdeelAantal(o)!==1 ? [`Aantal: ${fmtAantal(onderdeelAantal(o))} stuks (bedragen op dit blad zijn per stuk)`] : [],
       [],
       ['Materiaal'],
       ['Aantal','Omschrijving','Prijs','Materiaal inkoop','Materiaal verkoop'],
@@ -2514,7 +2716,7 @@ async function exporteerBegrotingNaarExcel(p){
 
     ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:inclRow-1, c:4}});
     XLSX.utils.book_append_sheet(wb, ws, naam);
-    onderdeelInfo.push({naam, sheetNaam:naam, exclRow, inclRow, exclCol:'E', inclCol:'E'});
+    onderdeelInfo.push({naam, sheetNaam:naam, exclRow, inclRow, exclCol:'E', inclCol:'E', aantal: onderdeelAantal(o)});
   });
 
   // Totaaloverzicht-blad
@@ -2525,15 +2727,16 @@ async function exporteerBegrotingNaarExcel(p){
     [],
     ['Onderdeel', 'Aanneemsom excl. btw', 'Aanneemsom incl. btw'],
   ];
-  onderdeelInfo.forEach(o=> totAoa.push([o.naam, 0, 0]));
+  onderdeelInfo.forEach(o=> totAoa.push([o.aantal!==1 ? `${o.naam} (${fmtAantal(o.aantal)}x)` : o.naam, 0, 0]));
   const totRow = totAoa.length + 1;
   totAoa.push(['Totaal', 0, 0]);
   const totWs = XLSX.utils.aoa_to_sheet(totAoa);
   totWs['!cols'] = [{wch:26},{wch:20},{wch:20}];
   onderdeelInfo.forEach((o, idx)=>{
     const row = 6 + idx;
-    totWs[`B${row}`] = {t:'n', f:`'${o.sheetNaam}'!${o.exclCol}${o.exclRow}`};
-    totWs[`C${row}`] = {t:'n', f:`'${o.sheetNaam}'!${o.inclCol}${o.inclRow}`};
+    const keer = o.aantal!==1 ? `*${o.aantal}` : ''; // begroting per onderdeel is per stuk
+    totWs[`B${row}`] = {t:'n', f:`'${o.sheetNaam}'!${o.exclCol}${o.exclRow}${keer}`};
+    totWs[`C${row}`] = {t:'n', f:`'${o.sheetNaam}'!${o.inclCol}${o.inclRow}${keer}`};
   });
   if(onderdeelInfo.length){
     const firstRow = 6, lastRow = 5 + onderdeelInfo.length;
@@ -2873,6 +3076,66 @@ async function genereerPdf(filename, blocks, {project=null, categorie='los'}={})
   showToast(resultaat.opgeslagen ? `Opgeslagen in: ${resultaat.pad}` : 'Ook als pdf gedownload');
 }
 
+// Inhoud van een offerte in de nieuwe opmaak (opmaak 2): per onderdeel een kop, de tekst en direct de prijs eronder,
+// regels zonder tekst als losse prijsregel. Zelfde blokken voor pdf en Word (via blocksNaarWordXml).
+function offerteInhoudBlocks(o){
+  const i = state.instellingen;
+  const t = offerteTotalen(o);
+  const factor = o.prijzenInclBtw ? 1 + (o.btw/100) : 1;
+  const bedrag = n=> euro(n*factor);
+  const blocks = [];
+  const onderwerp = (o.onderwerp||'').trim().replace(/\.$/, '') || 'de door u aangevraagde werkzaamheden';
+  blocks.push({t:'text', text:`Naar aanleiding van ${o.aanleiding||'uw aanvraag'}, doen wij u hierbij een vrijblijvende prijsopgave omtrent het ${o.werkzaamheden||'fabriceren, leveren en plaatsen'} van ${onderwerp}.`, size:10}, {t:'space', h:6});
+  if(o.regels.some(r=>(r.tekst||'').trim())) blocks.push({t:'text', text:'Omschrijving werkzaamheden:', bold:true, size:10}, {t:'space', h:4});
+  let vorigKopje = '';
+  o.regels.forEach(r=>{
+    const tekst = (r.tekst||'').trim();
+    const aantal = parseFloat(r.aantal)||0;
+    if(!tekst){
+      const links = `${aantal && aantal!==1 ? fmtAantal(aantal)+' x ' : ''}${r.omschrijving||''}`;
+      blocks.push({t:'tabline', left:links, right:bedrag(regelTotaal(r)), size:10, bold:true}, {t:'space', h:3});
+      vorigKopje = '';
+      return;
+    }
+    const kopje = (r.kopje||'').trim();
+    if(kopje && kopje.toLowerCase() !== vorigKopje.toLowerCase()) blocks.push({t:'text', text:kopje.toUpperCase(), bold:true, size:11}, {t:'space', h:2});
+    vorigKopje = kopje;
+    blocks.push({t:'text', text: kopje ? (r.omschrijving||'') : (r.omschrijving||'').toUpperCase(), bold:true, size:10}, {t:'space', h:2});
+    tekst.split('\n').forEach(regel=>{ if(regel.trim()) blocks.push({t:'text', text:regel.trim(), size:10}); });
+    blocks.push({t:'space', h:3});
+    blocks.push({t:'text', text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:10});
+    blocks.push({t:'text', text: aantal > 1 ? `${bedrag(r.prijs)} (per stuk)` : bedrag(regelTotaal(r)), bold:true, size:10}, {t:'space', h:7});
+  });
+  if(o.toonTotaal){
+    if(o.prijzenInclBtw){
+      blocks.push({t:'tabline', left:`Totaal inclusief ${o.btw}% btw`, right:euro(t.totaal), size:11, bold:true});
+    } else {
+      blocks.push({t:'tabline', left:'Subtotaal', right:euro(t.subtotaal), size:10});
+      blocks.push({t:'tabline', left:`Btw (${o.btw}%)`, right:euro(t.btw), size:10});
+      blocks.push({t:'tabline', left:'Totaal', right:euro(t.totaal), size:11, bold:true});
+    }
+    blocks.push({t:'space', h:6});
+  }
+  if(i.bedrijfsnaam){
+    let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
+    if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
+    blocks.push({t:'text', text:voorwaardenTekst, size:9}, {t:'space', h:5});
+  }
+  const betaling = (o.betalingscondities===undefined ? (i.betalingscondities||'') : o.betalingscondities).split('\n').map(r=>r.trim()).filter(Boolean);
+  blocks.push({t:'text', text:'Betalingscondities:', bold:true, size:9});
+  betaling.forEach(regel=> blocks.push({t:'text', text:regel, size:9}));
+  blocks.push({t:'text', text:`Prijzen ${o.prijzenInclBtw ? 'inclusief' : 'exclusief'} ${o.btw}% btw.`, size:9}, {t:'space', h:5});
+  return blocks;
+}
+function blocksNaarWordXml(blocks){
+  return blocks.map(b=>{
+    if(b.t==='space') return `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="${Math.max(20, Math.round(b.h*57))}" w:lineRule="exact"/></w:pPr></w:p>`;
+    const size = Math.round((b.size||10)*2);
+    if(b.t==='tabline') return wParaTab(b.left, b.right, {size, bold:!!b.bold, after:20});
+    return wPara({text:b.text, bold:!!b.bold, size, align:b.align||'left', after:20});
+  }).join('');
+}
+
 async function exporteerOfferteNaarPdf(o){
   const p = projectById(o.projectId);
   const k = p ? klantById(p.klantId) : null;
@@ -2893,36 +3156,40 @@ async function exporteerOfferteNaarPdf(o){
   ]));
   blocks.push({t:'text', text:'Offerte', bold:true, size:18, align:'center'}, {t:'space', h:6});
   blocks.push({t:'text', text:geachte(k), size:10}, {t:'space', h:4});
-  blocks.push({t:'text', text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:10}, {t:'space', h:6});
+  if(o.opmaak===2){
+    blocks.push(...offerteInhoudBlocks(o));
+  } else {
+    blocks.push({t:'text', text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:10}, {t:'space', h:6});
 
-  if(o.omschrijvingText && o.omschrijvingText.trim()){
-    blocks.push({t:'text', text:'Omschrijving werkzaamheden:', bold:true, size:10});
-    o.omschrijvingText.split('\n').forEach(regel=>{
-      if(!regel.trim()){ blocks.push({t:'space', h:2}); return; }
-      blocks.push({t:'text', text:regel.trim(), bold: !regel.trim().startsWith('-'), size:10});
-    });
-    blocks.push({t:'space', h:5});
-  }
+    if(o.omschrijvingText && o.omschrijvingText.trim()){
+      blocks.push({t:'text', text:'Omschrijving werkzaamheden:', bold:true, size:10});
+      o.omschrijvingText.split('\n').forEach(regel=>{
+        if(!regel.trim()){ blocks.push({t:'space', h:2}); return; }
+        blocks.push({t:'text', text:regel.trim(), bold: !regel.trim().startsWith('-'), size:10});
+      });
+      blocks.push({t:'space', h:5});
+    }
 
-  blocks.push({t:'text', text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:10}, {t:'space', h:4});
-  blocks.push(...pdfRegelBlocks(o.regels));
-  blocks.push({t:'space', h:3});
-  blocks.push({t:'tabline', left:'Subtotaal', right:euro(t.subtotaal), size:10});
-  blocks.push({t:'tabline', left:`Btw (${o.btw}%)`, right:euro(t.btw), size:10});
-  blocks.push({t:'tabline', left:'Totaal', right:euro(t.totaal), size:12, bold:true});
-  blocks.push({t:'space', h:6});
+    blocks.push({t:'text', text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:10}, {t:'space', h:4});
+    blocks.push(...pdfRegelBlocks(o.regels));
+    blocks.push({t:'space', h:3});
+    blocks.push({t:'tabline', left:'Subtotaal', right:euro(t.subtotaal), size:10});
+    blocks.push({t:'tabline', left:`Btw (${o.btw}%)`, right:euro(t.btw), size:10});
+    blocks.push({t:'tabline', left:'Totaal', right:euro(t.totaal), size:12, bold:true});
+    blocks.push({t:'space', h:6});
 
-  if(i.bedrijfsnaam){
-    let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
-    if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
-    blocks.push({t:'text', text:voorwaardenTekst, size:9}, {t:'space', h:5});
-  }
-  if(i.betalingscondities && i.betalingscondities.trim()){
-    blocks.push({t:'text', text:'Betalingscondities:', bold:true, size:9});
-    i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
-      blocks.push({t:'text', text:`- ${regel.trim()}`, size:9});
-    });
-    blocks.push({t:'text', text:`- Prijzen exclusief ${o.btw}% btw.`, size:9}, {t:'space', h:5});
+    if(i.bedrijfsnaam){
+      let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
+      if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
+      blocks.push({t:'text', text:voorwaardenTekst, size:9}, {t:'space', h:5});
+    }
+    if(i.betalingscondities && i.betalingscondities.trim()){
+      blocks.push({t:'text', text:'Betalingscondities:', bold:true, size:9});
+      i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
+        blocks.push({t:'text', text:`- ${regel.trim()}`, size:9});
+      });
+      blocks.push({t:'text', text:`- Prijzen exclusief ${o.btw}% btw.`, size:9}, {t:'space', h:5});
+    }
   }
   blocks.push({t:'text', text:'Werkzaamheden die niet in deze offerte zijn omschreven, zijn niet in deze prijs opgenomen.', size:9});
   blocks.push({t:'text', text:`Deze offerte is vrijblijvend en geldig tot ${fmtDate(o.geldigTot)}.`, size:9});
@@ -3075,42 +3342,45 @@ async function exporteerOfferteNaarWord(o){
   xml += wPara({text:'', after:120});
   xml += wPara({text:'Offerte', bold:true, size:30, align:'center', after:220});
   xml += wPara({text: geachte(k), size:20, after:160});
-  xml += wPara({text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:20, after:220});
+  if(o.opmaak===2){
+    xml += blocksNaarWordXml(offerteInhoudBlocks(o));
+  } else {
+    xml += wPara({text:`Naar aanleiding van uw aanvraag, doen wij u hierbij een vrijblijvende prijsopgave omtrent het fabriceren, leveren en plaatsen van ${p&&p.omschrijving? p.omschrijving : 'de door u aangevraagde werkzaamheden'}.`, size:20, after:220});
 
-  if(o.omschrijvingText && o.omschrijvingText.trim()){
-    xml += wPara({text:'Omschrijving werkzaamheden:', bold:true, size:20, after:100});
-    o.omschrijvingText.split('\n').forEach(regel=>{
-      if(!regel.trim()){ xml += wPara({text:'', after:80}); return; }
-      const isKop = !regel.trim().startsWith('-');
-      xml += wPara({text: regel.trim(), bold: isKop, size:20, after: isKop? 40 : 60});
-    });
-    xml += wPara({text:'', after:160});
+    if(o.omschrijvingText && o.omschrijvingText.trim()){
+      xml += wPara({text:'Omschrijving werkzaamheden:', bold:true, size:20, after:100});
+      o.omschrijvingText.split('\n').forEach(regel=>{
+        if(!regel.trim()){ xml += wPara({text:'', after:80}); return; }
+        const isKop = !regel.trim().startsWith('-');
+        xml += wPara({text: regel.trim(), bold: isKop, size:20, after: isKop? 40 : 60});
+      });
+      xml += wPara({text:'', after:160});
+    }
+
+    xml += wPara({text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:20, after:140});
+
+    const rows = o.regels.map(r=> wParaTab(regelTekstLinks(r), euro(regelTotaal(r)), {after:60}));
+    xml += rows.join('');
+
+    xml += wPara({text:'', after:100});
+    xml += wParaTab('Subtotaal', euro(t.subtotaal), {after:20});
+    xml += wParaTab(`Btw (${o.btw}%)`, euro(t.btw), {after:20});
+    xml += wParaTab('Totaal', euro(t.totaal), {after:280, bold:true, size:24});
+
+    if(i.bedrijfsnaam){
+      let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
+      if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
+      xml += wPara({text: voorwaardenTekst, size:18, after:140});
+    }
+
+    if(i.betalingscondities && i.betalingscondities.trim()){
+      xml += wPara({text:'Betalingscondities:', bold:true, size:18, after:60});
+      i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
+        xml += wPara({text:`- ${regel.trim()}`, size:18, after:20});
+      });
+      xml += wPara({text:`- Prijzen exclusief ${o.btw}% btw.`, size:18, after:140});
+    }
   }
-
-  xml += wPara({text:'Bovengenoemde werkzaamheden kunnen wij u aanbieden voor een totaal prijs van:', size:20, after:140});
-
-  const rows = o.regels.map(r=> wParaTab(regelTekstLinks(r), euro(regelTotaal(r)), {after:60}));
-  xml += rows.join('');
-
-  xml += wPara({text:'', after:100});
-  xml += wParaTab('Subtotaal', euro(t.subtotaal), {after:20});
-  xml += wParaTab(`Btw (${o.btw}%)`, euro(t.btw), {after:20});
-  xml += wParaTab('Totaal', euro(t.totaal), {after:280, bold:true, size:24});
-
-  if(i.bedrijfsnaam){
-    let voorwaardenTekst = `Op alle rechtsbetrekkingen zijn de Algemene bedrijfsvoorwaarden van "${i.bedrijfsnaam}" van toepassing. Een exemplaar wordt op verzoek kosteloos toegezonden.`;
-    if(i.website) voorwaardenTekst += ` U kunt de volledige tekst ook lezen op de website ${i.website}.`;
-    xml += wPara({text: voorwaardenTekst, size:18, after:140});
-  }
-
-  if(i.betalingscondities && i.betalingscondities.trim()){
-    xml += wPara({text:'Betalingscondities:', bold:true, size:18, after:60});
-    i.betalingscondities.split('\n').filter(r=>r.trim()).forEach(regel=>{
-      xml += wPara({text:`- ${regel.trim()}`, size:18, after:20});
-    });
-    xml += wPara({text:`- Prijzen exclusief ${o.btw}% btw.`, size:18, after:140});
-  }
-
   xml += wPara({text:'Werkzaamheden die niet in deze offerte zijn omschreven, zijn niet in deze prijs opgenomen.', size:18, after:20});
   xml += wPara({text:`Deze offerte is vrijblijvend en geldig tot ${fmtDate(o.geldigTot)}.`, size:18, after:20});
   xml += wPara({text:'Indien gewenst kunnen wij deze prijsopgave mondeling komen toelichten.', size:18, after:140});
@@ -3305,12 +3575,13 @@ function viewMaterialen(){
 
     <div class="panel">
       <table>
-        <thead><tr><th>Naam</th><th>Eenheid</th><th style="text-align:right;">Prijs (inkoop)</th><th></th></tr></thead>
+        <thead><tr><th>Naam</th><th>Eenheid</th><th>Tekst in offerte</th><th style="text-align:right;">Prijs (inkoop)</th><th></th></tr></thead>
         <tbody>
           ${lijst.length ? lijst.map(m=>`
             <tr>
               <td>${esc(m.naam)}</td>
               <td>${esc(m.eenheid||'-')}</td>
+              <td style="color:var(--text-muted); font-size:12.5px;">${(m.offertetekst||'').trim() ? esc((m.offerteMetAantal===false ? '' : '2 ') + ((m.offertetekstMeervoud||'').trim() || m.offertetekst.trim())) : '-'}</td>
               <td style="text-align:right;">${euro(m.prijs)}</td>
               <td>
                 <div class="row-actions" style="opacity:1;">
@@ -3319,15 +3590,31 @@ function viewMaterialen(){
                 </div>
               </td>
             </tr>
-          `).join('') : `<tr><td colspan="4"><div class="empty-state"><div class="title">Nog geen materialen</div>Voeg veelgebruikte materialen met hun inkoopprijs toe, zodat je die snel kunt kiezen in de begroting.</div></td></tr>`}
+          `).join('') : `<tr><td colspan="5"><div class="empty-state"><div class="title">Nog geen materialen</div>Voeg veelgebruikte materialen met hun inkoopprijs toe, zodat je die snel kunt kiezen in de begroting.</div></td></tr>`}
         </tbody>
       </table>
+    </div>
+
+    <h2 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:26px 0 6px;">Vaste zinnen voor offertes</h2>
+    <p class="page-sub" style="margin-bottom:10px;">Zinnen die vaak terugkomen, zoals de materialen-zin of "De deuren gaan open door middel van een pushed open systeem." Bij elk onderdeel in de begroting vink je aan welke erin moeten.</p>
+    <div class="panel" style="padding:16px 18px;">
+      <div id="zinnen-lijst" style="display:flex; flex-direction:column; gap:8px;">
+        ${(state.instellingen.offerteZinnen||[]).map(z=>`
+          <div style="display:flex; gap:8px; align-items:flex-start;" data-zin-id="${z.id}">
+            <textarea class="zin-tekst" rows="2" style="flex:1;">${esc(z.tekst)}</textarea>
+            <button type="button" class="btn btn-ghost btn-sm btn-danger" data-del-zin="${z.id}">Verwijderen</button>
+          </div>`).join('') || '<p class="info-line" style="margin:0;">Nog geen vaste zinnen.</p>'}
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" class="btn btn-sm" id="btn-zin-toevoegen">+ Zin toevoegen</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btn-zinnen-opslaan">Zinnen opslaan</button>
+      </div>
     </div>
   `;
 }
 
 function materiaalForm(materiaal){
-  const m = materiaal || {naam:'', eenheid:'', prijs:0};
+  const m = materiaal || {naam:'', eenheid:'', prijs:0, offertetekst:'', offertetekstMeervoud:'', offerteMetAantal:true};
   return `
     <h2>${materiaal ? 'Materiaal bewerken' : 'Nieuw materiaal'}</h2>
     <form id="materiaal-form">
@@ -3336,6 +3623,14 @@ function materiaalForm(materiaal){
         <div class="field"><label>Eenheid (optioneel)</label><input type="text" name="eenheid" value="${esc(m.eenheid||'')}" placeholder="Bijv. m2, stuk, m1"></div>
         <div class="field"><label>Prijs (inkoop)</label><input type="number" step="0.01" name="prijs" required value="${m.prijs}"></div>
       </div>
+      <p class="info-line" style="margin:6px 0 8px;"><b>Tekst in offerte</b> (optioneel). Leeg = dit materiaal komt niet in de offertetekst (bijv. schroeven).</p>
+      <div class="field-row">
+        <div class="field"><label>Bij 1 stuk</label><input type="text" name="offertetekst" value="${esc(m.offertetekst||'')}" placeholder="Bijv. module met elektrische kledinglift"></div>
+        <div class="field"><label>Bij meer stuks (optioneel)</label><input type="text" name="offertetekstMeervoud" value="${esc(m.offertetekstMeervoud||'')}" placeholder="Bijv. modules met elektrische kledinglift"></div>
+      </div>
+      <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-bottom:6px;">
+        <input type="checkbox" name="offerteMetAantal" ${m.offerteMetAantal===false ? '' : 'checked'}> Aantal uit de begroting ervoor zetten (bijv. "2 modules met …"). Uitzetten bij plaatmateriaal in m2.
+      </label>
       <div class="modal-actions">
         <button type="button" class="btn" id="modal-cancel">Annuleren</button>
         <button type="submit" class="btn btn-primary">${materiaal ? 'Opslaan' : 'Materiaal toevoegen'}</button>
@@ -3351,7 +3646,8 @@ function openMateriaalModal(materiaalId){
   document.getElementById('materiaal-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
-    const data = { naam: fd.get('naam').trim(), eenheid: fd.get('eenheid').trim(), prijs: parseFloat(fd.get('prijs'))||0 };
+    const data = { naam: fd.get('naam').trim(), eenheid: fd.get('eenheid').trim(), prijs: parseFloat(fd.get('prijs'))||0,
+      offertetekst: fd.get('offertetekst').trim(), offertetekstMeervoud: fd.get('offertetekstMeervoud').trim(), offerteMetAantal: fd.get('offerteMetAantal') === 'on' };
     try{
       if(materiaal){
         await db.collection('materialen').doc(materiaal.id).update(data);
