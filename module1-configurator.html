@@ -7553,12 +7553,58 @@ function stlMakeZip(files){
   const out = new Uint8Array(total); let o = 0; all.forEach(c => { out.set(c, o); o += c.length; });
   return out;
 }
-// zip met een apart STL-bestand per module (+ "overig"), als base64
+// zip met: 00-hele-kast.stl (alles op de juiste plek), een apart STL per module (+ "overig"), opbouw.txt (maten en
+// posities van elke module) en opbouw.svg (voor- en bovenaanzicht met de namen), als base64
 function exportCabinetModulesZipBase64(){
   const c = stlCollect();
   if(!c) return null;
-  const files = Object.keys(c.parts).sort().map(name => ({ name: name + '.stl', data: new Uint8Array(stlTrianglesToBuffer(c.parts[name])) }));
-  return files.length ? arrayBufferToBase64(stlMakeZip(files).buffer) : null;
+  const bbox = tris => { const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; tris.forEach(t => { for(let v = 0; v < 3; v++) for(let k = 0; k < 3; k++){ const x = t[3 + v*3 + k]; if(x < mn[k]) mn[k] = x; if(x > mx[k]) mx[k] = x; } }); return { mn, mx }; };
+  const names = Object.keys(c.parts).sort();
+  const G = bbox(c.all), r1 = v => Math.round(v*10)/10;
+  // posities t.o.v. de linker-onder-voorhoek van de hele kast: x = van links, y = hoogte vanaf de vloer/onderkant, z = afstand achter de voorkant
+  const rel = n => { const b = bbox(c.parts[n]); return { x:b.mn[0]-G.mn[0], y:b.mn[1]-G.mn[1], z:G.mx[2]-b.mx[2], w:b.mx[0]-b.mn[0], h:b.mx[1]-b.mn[1], d:b.mx[2]-b.mn[2] }; };
+  const lines = [
+    'OPBOUW VAN DE KASTENWAND - Module1',
+    '',
+    'Alle maten zijn in centimeters (dezelfde eenheid als de STL-bestanden).',
+    'Totaal: ' + r1(G.mx[0]-G.mn[0]) + ' breed x ' + r1(G.mx[1]-G.mn[1]) + ' hoog x ' + r1(G.mx[2]-G.mn[2]) + ' diep',
+    '00-hele-kast.stl = de complete opstelling, alle onderdelen op de juiste plek (ter controle).',
+    'Elke module staat ook als los STL-bestand, inclusief de deur en handgreep van dat vak.',
+    '',
+    'Positie van elke module, gemeten vanaf de linker-onder-voorhoek van de hele kast:',
+    '  links = afstand vanaf de linkerkant, onder = afstand vanaf de onderkant, achter voorkant = hoeveel de voorkant naar achteren ligt (0 = gelijk met de voorkant).',
+    '  Naam: Wand A/B = de wand, rij 1 = onderste rij, kolom 1 = eerste kolom (van links gezien, op de wand).',
+    ''
+  ];
+  names.forEach(n => { const q = rel(n); lines.push(n + ':  breed ' + r1(q.w) + '  hoog ' + r1(q.h) + '  diep ' + r1(q.d) + '   |   links ' + r1(q.x) + '  onder ' + r1(q.y) + '  achter voorkant ' + r1(q.z)); });
+  // tekening: voorzicht (breedte x hoogte) en bovenaanzicht (breedte x diepte), elk vak als rechthoek met naam
+  const W = G.mx[0]-G.mn[0], H = G.mx[1]-G.mn[1], D = G.mx[2]-G.mn[2];
+  const sc = 600 / Math.max(W, H, 1), pad = 30;
+  const fw = W*sc, fh = H*sc, dh = D*sc;
+  const svgH = Math.round(pad + fh + 60 + dh + pad);
+  let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.round(fw + pad*2) + '" height="' + svgH + '" font-family="Arial" font-size="11">';
+  svg += '<rect width="100%" height="100%" fill="#fff"/><text x="' + pad + '" y="18" font-size="13" font-weight="bold">Voorzicht (' + r1(W) + ' x ' + r1(H) + ' cm)</text>';
+  const col = ['#e8d9c3', '#d6e3d1', '#cfdcea', '#ecd1d1', '#e1d6ea', '#f0e6b8'];
+  names.forEach((n, k) => {
+    const b = bbox(c.parts[n]);
+    const x = pad + (b.mn[0]-G.mn[0])*sc, w = (b.mx[0]-b.mn[0])*sc, y = pad + (G.mx[1]-b.mx[1])*sc, h = (b.mx[1]-b.mn[1])*sc;
+    svg += '<rect x="' + r1(x) + '" y="' + r1(y) + '" width="' + r1(w) + '" height="' + r1(h) + '" fill="' + col[k % col.length] + '" stroke="#333" stroke-width="1.2" fill-opacity="0.8"/>';
+    svg += '<text x="' + r1(x + w/2) + '" y="' + r1(y + h/2) + '" text-anchor="middle">' + n.replace('-', ' ') + '</text>';
+    svg += '<text x="' + r1(x + w/2) + '" y="' + r1(y + h/2 + 13) + '" text-anchor="middle" fill="#555">' + r1(b.mx[0]-b.mn[0]) + ' x ' + r1(b.mx[1]-b.mn[1]) + '</text>';
+  });
+  const top0 = pad + fh + 40;
+  svg += '<text x="' + pad + '" y="' + (top0 - 10) + '" font-size="13" font-weight="bold">Bovenaanzicht (voorkant onderaan)</text>';
+  names.forEach((n, k) => {
+    const b = bbox(c.parts[n]);
+    const x = pad + (b.mn[0]-G.mn[0])*sc, w = (b.mx[0]-b.mn[0])*sc, h = (b.mx[2]-b.mn[2])*sc;
+    svg += '<rect x="' + r1(x) + '" y="' + r1(top0 + (G.mx[2]-b.mx[2])*sc) + '" width="' + r1(w) + '" height="' + r1(h) + '" fill="' + col[k % col.length] + '" stroke="#333" stroke-width="1" fill-opacity="0.6"/>';
+  });
+  svg += '</svg>';
+  const enc = new TextEncoder();
+  const files = [{ name: '00-hele-kast.stl', data: new Uint8Array(stlTrianglesToBuffer(c.all)) }]
+    .concat(names.map(n => ({ name: n + '.stl', data: new Uint8Array(stlTrianglesToBuffer(c.parts[n])) })))
+    .concat([{ name: 'opbouw.txt', data: enc.encode(lines.join('\r\n')) }, { name: 'opbouw.svg', data: enc.encode(svg) }]);
+  return arrayBufferToBase64(stlMakeZip(files).buffer);
 }
 // Zelfstandige HTML-pagina van de offerte, exact zoals de klant 'm ziet (zelfde stijl/plaatje) - dit is
 // wat er in de administratie-app als "de PDF" van de bestelling geopend/afgedrukt kan worden.
