@@ -4779,7 +4779,8 @@ function toonLoginScherm(fout){
         <div class="lock-error" id="login-error">${fout? esc(fout): ''}</div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Inloggen</button>
       </form>
-      <p style="margin:16px 0 0; font-size:12.5px;"><a href="#" id="toon-registreren" style="color:var(--copper-dark);">Eerste keer? Beheerdersaccount aanmaken</a></p>
+      <p style="margin:12px 0 0; font-size:12.5px;"><a href="#" id="wachtwoord-vergeten" style="color:var(--copper-dark);">Wachtwoord vergeten?</a></p>
+      <p style="margin:8px 0 0; font-size:12.5px;"><a href="#" id="toon-registreren" style="color:var(--copper-dark);">Eerste keer? Beheerdersaccount aanmaken</a></p>
       <form id="registreren-form" style="display:none; margin-top:12px; text-align:left; border-top:1px solid var(--border); padding-top:14px;">
         <div class="field"><label>Je naam</label><input type="text" id="reg-naam" required></div>
         <div class="field"><label>E-mailadres</label><input type="email" id="reg-email" required autocomplete="username"></div>
@@ -4799,10 +4800,29 @@ function toonLoginScherm(fout){
     e.preventDefault();
     const email = document.getElementById('login-email').value.trim();
     const wachtwoord = document.getElementById('login-wachtwoord').value;
+    const foutVak = document.getElementById('login-error');
+    foutVak.style.color = '';
     try{
       await auth.signInWithEmailAndPassword(email, wachtwoord);
     }catch(err){
-      document.getElementById('login-error').textContent = 'Inloggen mislukt: controleer e-mailadres en wachtwoord';
+      foutVak.textContent = loginFoutTekst(err);
+    }
+  });
+
+  // wachtwoord vergeten: Firebase stuurt een e-mail met een link om zelf een nieuw wachtwoord in te stellen
+  document.getElementById('wachtwoord-vergeten').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const foutVak = document.getElementById('login-error');
+    foutVak.style.color = '';
+    if(!email){ foutVak.textContent = 'Vul eerst hierboven je e-mailadres in en klik dan opnieuw op "Wachtwoord vergeten?".'; return; }
+    try{
+      auth.languageCode = 'nl';
+      await auth.sendPasswordResetEmail(email);
+      foutVak.style.color = 'var(--sage)';
+      foutVak.textContent = `Als ${email} een account heeft, is er nu een e-mail gestuurd met een link om een nieuw wachtwoord te maken. Kijk ook in je spam.`;
+    }catch(err){
+      foutVak.textContent = loginFoutTekst(err);
     }
   });
 
@@ -4818,6 +4838,19 @@ function toonLoginScherm(fout){
       document.getElementById('login-error').textContent = 'Aanmaken mislukt: ' + err.message;
     }
   });
+}
+
+// Firebase-foutcodes omzetten naar een begrijpelijke melding op het inlogscherm
+function loginFoutTekst(err){
+  const code = (err && err.code) || '';
+  if(code === 'auth/invalid-email') return 'Dit e-mailadres is niet goed geschreven.';
+  if(code === 'auth/missing-password') return 'Vul je wachtwoord in.';
+  if(code === 'auth/user-disabled') return 'Dit account is uitgeschakeld.';
+  if(code === 'auth/too-many-requests') return 'Te vaak geprobeerd. Wacht een paar minuten, of gebruik "Wachtwoord vergeten?".';
+  if(code === 'auth/network-request-failed') return 'Geen verbinding met internet. Probeer het opnieuw.';
+  if(code === 'auth/user-not-found') return 'Er is geen account met dit e-mailadres.';
+  if(['auth/wrong-password','auth/invalid-credential','auth/invalid-login-credentials'].includes(code)) return 'E-mailadres of wachtwoord klopt niet. Gebruik eventueel "Wachtwoord vergeten?".';
+  return 'Inloggen mislukt' + (code ? ` (${code})` : '') + ': controleer e-mailadres en wachtwoord.';
 }
 
 function toonGeenToegangScherm(){
