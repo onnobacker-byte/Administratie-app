@@ -7483,6 +7483,7 @@ function stlCollect(){
     const tmpV = new THREE.Vector3();
     const getVert = (pos, mat, i) => { tmpV.set(pos.getX(i), pos.getY(i), pos.getZ(i)); tmpV.applyMatrix4(mat); return [tmpV.x*STL_UNIT_SCALE, tmpV.y*STL_UNIT_SCALE, tmpV.z*STL_UNIT_SCALE]; };
     const parts = {}, all = [];
+    let meshCounter = 0;
     modelGroup.traverse(obj => {
       if(!obj.isMesh || !obj.geometry || !obj.geometry.attributes || !obj.geometry.attributes.position) return;
       if(obj.userData && obj.userData.noExport) return; // bijv. de tv in een tv-vak: geen onderdeel van de kast
@@ -7493,6 +7494,7 @@ function stlCollect(){
       const geo = obj.geometry, pos = geo.attributes.position, idx = geo.index, mat = obj.matrixWorld;
       const count = idx ? idx.count : pos.count;
       const list = parts[name] || (parts[name] = []);
+      const meshId = ++meshCounter, isBox = geo.type === 'BoxGeometry' && !!idx;
       for(let i=0; i<count; i+=3){
         const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i+1) : i+1, ic = idx ? idx.getX(i+2) : i+2;
         const a = getVert(pos, mat, ia), b = getVert(pos, mat, ib), c = getVert(pos, mat, ic);
@@ -7500,6 +7502,7 @@ function stlCollect(){
         const ac = new THREE.Vector3(c[0]-a[0], c[1]-a[1], c[2]-a[2]);
         const n = new THREE.Vector3().crossVectors(ab, ac).normalize();
         const tri = [n.x, n.y, n.z].concat(a, b, c);
+        tri.m = meshId; tri.f = isBox ? meshId + ':' + (i/6 | 0) : meshId + ':' + i; // mesh + vlak (een box = 6 vlakken van elk 2 driehoeken)
         list.push(tri); all.push(tri);
       }
     });
@@ -7579,6 +7582,110 @@ function stlMakeZip(files){
   let total = 0; all.forEach(c => total += c.length);
   const out = new Uint8Array(total); let o = 0; all.forEach(c => { out.set(c, o); o += c.length; });
   return out;
+}
+// STEP-bestand (AP214, eenheid mm): een samenstelling met per module een eigen onderdeel (product), elk met de losse
+// onderdelen (panelen, deur, handgreep) als eigen massief lichaam. Alles staat op de juiste plek (Z omhoog, zoals PaletteCAD).
+function exportCabinetStepString(c){
+  c = c || stlCollect();
+  if(!c) return null;
+  const L = [], id = t => { L.push(t); return '#' + L.length; };
+  const f = x => { const r = (Math.round(x * 1000) / 1000).toString(); return r.indexOf('.') < 0 ? r + '.' : r; };
+  const q = t => "'" + String(t).replace(/[^A-Za-z0-9 _.\-]/g, '_') + "'";
+  // oorsprong, assen en eenheden (mm)
+  const org = id("CARTESIAN_POINT('',(0.,0.,0.))"), dz = id("DIRECTION('',(0.,0.,1.))"), dx = id("DIRECTION('',(1.,0.,0.))");
+  const axis = () => id("AXIS2_PLACEMENT_3D('',"+org+","+dz+","+dx+")");
+  const lu = id("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
+  const au = id("(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))");
+  const su = id("(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())");
+  const unc = id("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),"+lu+",'distance_accuracy_value','')");
+  const ctx = id("(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT(("+unc+")) GLOBAL_UNIT_ASSIGNED_CONTEXT(("+lu+","+au+","+su+")) REPRESENTATION_CONTEXT('Module1','3D'))");
+  const app = id("APPLICATION_CONTEXT('automotive_design')");
+  id("APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,"+app+")");
+  const mctx = id("MECHANICAL_CONTEXT('none',"+app+",'mechanical')");
+  const pdctx = id("PRODUCT_DEFINITION_CONTEXT('part definition',"+app+",'design')");
+  const mkProduct = (name, repItems) => {
+    const pr = id("PRODUCT("+q(name)+","+q(name)+",'',("+mctx+"))");
+    const pdf = id("PRODUCT_DEFINITION_FORMATION('','',"+pr+")");
+    const pd = id("PRODUCT_DEFINITION('design','',"+pdf+","+pdctx+")");
+    const pds = id("PRODUCT_DEFINITION_SHAPE('','',"+pd+")");
+    const rep = id("SHAPE_REPRESENTATION("+q(name)+",("+repItems.join(',')+"),"+ctx+")");
+    id("SHAPE_DEFINITION_REPRESENTATION("+pds+","+rep+")");
+    return { pd, rep };
+  };
+  // een massief lichaam (manifold solid brep) uit een lijst driehoeken: vlakke vlakken (PLANE) met rechte randen;
+  // driehoeken van 1 vlak (box) worden weer 1 vierhoek, en elke rand wordt door de 2 aanliggende vlakken gedeeld
+  const MM = 10;
+  const mapP = v => [v[0]*MM, v[2]*MM, v[1]*MM]; // Y en Z wisselen (Z omhoog), daarom de lussen omgekeerd
+  const sub = (u, w) => [u[0]-w[0], u[1]-w[1], u[2]-w[2]];
+  const crs = (u, w) => [u[1]*w[2]-u[2]*w[1], u[2]*w[0]-u[0]*w[2], u[0]*w[1]-u[1]*w[0]];
+  const len = u => Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
+  const unit = u => { const l = len(u) || 1; return [u[0]/l, u[1]/l, u[2]/l]; };
+  const pk = v => f(v[0]) + ',' + f(v[1]) + ',' + f(v[2]);
+  const mkBody = (name, tris) => {
+    const vId = {}, eId = {};
+    const vertex = v => { const k = pk(v); return vId[k] || (vId[k] = id("VERTEX_POINT('',"+id("CARTESIAN_POINT('',("+k+"))")+")")); };
+    const edge = (a, b) => { // geeft [edge-id, true als a->b gelijk is aan de richting waarmee de rand is aangemaakt]
+      const ka = pk(a), kb = pk(b), fw = ka + '|' + kb, bw = kb + '|' + ka;
+      if(eId[fw]) return [eId[fw], true];
+      if(eId[bw]) return [eId[bw], false];
+      const d = sub(b, a), dir = id("DIRECTION('',("+pk(unit(d))+"))"), vec = id("VECTOR('',"+dir+","+f(len(d))+")");
+      const line = id("LINE('',"+id("CARTESIAN_POINT('',("+ka+"))")+","+vec+")");
+      return [eId[fw] = id("EDGE_CURVE('',"+vertex(a)+","+vertex(b)+","+line+",.T.)"), true];
+    };
+    const groups = {}, order = [];
+    tris.forEach(t => { const g = t.f; if(!groups[g]){ groups[g] = []; order.push(g); } groups[g].push(t); });
+    const faces = [];
+    order.forEach(g => {
+      const ts = groups[g];
+      const V = t => [[t[3], t[4], t[5]], [t[6], t[7], t[8]], [t[9], t[10], t[11]]];
+      const near = (u, w) => Math.abs(u[0]-w[0]) + Math.abs(u[1]-w[1]) + Math.abs(u[2]-w[2]) < 1e-6;
+      let poly;
+      if(ts.length === 2){
+        const a = V(ts[0]), b = V(ts[1]);
+        const extra = b.find(v => !a.some(u => near(u, v)));
+        poly = extra ? [a[0], a[1], extra, a[2]] : a;
+      } else poly = V(ts[0]);
+      const P = poly.slice().reverse().map(mapP);
+      // normaal (Newell) en eerste richting voor het vlak
+      let n = [0, 0, 0];
+      for(let k = 0; k < P.length; k++){ const u = P[k], w = P[(k+1) % P.length]; n[0] += (u[1]-w[1])*(u[2]+w[2]); n[1] += (u[2]-w[2])*(u[0]+w[0]); n[2] += (u[0]-w[0])*(u[1]+w[1]); }
+      if(len(n) < 1e-9) return; // gedegenereerd vlak
+      n = unit(n);
+      const ref = unit(sub(P[1], P[0]));
+      const plane = id("PLANE('',"+id("AXIS2_PLACEMENT_3D('',"+id("CARTESIAN_POINT('',("+pk(P[0])+"))")+","+id("DIRECTION('',("+pk(n)+"))")+","+id("DIRECTION('',("+pk(ref)+"))")+")")+")");
+      const oes = P.map((u, k) => { const e = edge(u, P[(k+1) % P.length]); return id("ORIENTED_EDGE('',*,*,"+e[0]+","+(e[1] ? '.T.' : '.F.')+")"); });
+      const bound = id("FACE_OUTER_BOUND('',"+id("EDGE_LOOP('',("+oes.join(',')+"))")+",.T.)");
+      faces.push(id("ADVANCED_FACE('',("+bound+"),"+plane+",.T.)"));
+    });
+    return id("MANIFOLD_SOLID_BREP("+q(name)+","+id("CLOSED_SHELL('',("+faces.join(',')+"))")+")");
+  };
+  const names = Object.keys(c.parts).sort();
+  const modules = names.map(n => {
+    const byMesh = {}, mo = [];
+    c.parts[n].forEach(t => { if(!byMesh[t.m]){ byMesh[t.m] = []; mo.push(t.m); } byMesh[t.m].push(t); });
+    const bodies = mo.map((m, k) => mkBody(n + '_onderdeel' + (k + 1), byMesh[m]));
+    return { name: n, prod: mkProduct(n, [axis()].concat(bodies)) };
+  });
+  const root = mkProduct('Module1-kastenwand', [axis()]);
+  modules.forEach((m, k) => {
+    const nauo = id("NEXT_ASSEMBLY_USAGE_OCCURRENCE('"+(k+1)+"',"+q(m.name)+",'',"+root.pd+","+m.prod.pd+",$)");
+    const pds = id("PRODUCT_DEFINITION_SHAPE('','',"+nauo+")");
+    const tr = id("ITEM_DEFINED_TRANSFORMATION('','',"+axis()+","+axis()+")");
+    const rel = id("(REPRESENTATION_RELATIONSHIP('','',"+m.prod.rep+","+root.rep+") REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION("+tr+") SHAPE_REPRESENTATION_RELATIONSHIP())");
+    id("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION("+rel+","+pds+")");
+  });
+  return "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Module1 kastenwand'),'2;1');\nFILE_NAME('module1.step','"+new Date().toISOString().slice(0,19)+"',('Module1'),('Module1'),'Module1 configurator','Module1 configurator','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\nENDSEC;\nDATA;\n"
+    + L.map((t, i) => '#' + (i + 1) + '=' + t + ';').join('\n') + "\nENDSEC;\nEND-ISO-10303-21;\n";
+}
+// STEP-tekst gecomprimeerd (gzip) als base64, zodat de bestelling klein blijft; '' als dat niet kan
+async function exportCabinetStepGzBase64(){
+  try{
+    const t = exportCabinetStepString();
+    if(!t || typeof CompressionStream === 'undefined') return '';
+    const gz = new Blob([new TextEncoder().encode(t)]).stream().pipeThrough(new CompressionStream('gzip'));
+    const b = arrayBufferToBase64(await new Response(gz).arrayBuffer());
+    return b.length < 400000 ? b : '';
+  }catch(e){ return ''; }
 }
 // zip met: 00-hele-kast.stl (alles op de juiste plek), een apart STL per module (+ "overig"), opbouw.txt (maten en
 // posities van elke module) en opbouw.svg (voor- en bovenaanzicht met de namen), als base64
@@ -7679,7 +7786,9 @@ document.getElementById('orderBtn').addEventListener('click', async () => {
   const oudeTekst = btn.textContent;
   btn.disabled = true; btn.textContent = 'Bezig met versturen...';
   try{
+    const stepGz = await exportCabinetStepGzBase64();
     const payload = buildOrderPayload();
+    payload.stepGzBase64 = stepGz; // STEP met per module een eigen onderdeel, gzip + base64
     const body = JSON.stringify({ fields: fsVal(payload).mapValue.fields });
     const res = await fetch(ORDER_CREATE_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body });
     if(!res.ok) throw new Error('Versturen mislukt (fout ' + res.status + ')');

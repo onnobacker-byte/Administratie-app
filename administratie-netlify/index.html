@@ -4033,6 +4033,16 @@ function downloadStl(id){
   if(!b || !b.stlBase64){ showToast('Geen STL-bestand gevonden bij deze bestelling'); return; }
   downloadBestand(`Bestelling-${id}.stl`, base64ToBlob(b.stlBase64, 'model/stl'), 'model/stl');
 }
+async function downloadStep(id){
+  const b = bestellingById(id);
+  if(!b || !b.stepGzBase64){ showToast('Geen STEP-bestand gevonden bij deze bestelling'); return; }
+  try{
+    const bin = atob(b.stepGzBase64), bytes = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const tekst = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    downloadBestand(`Bestelling-${id}.step`, new Blob([tekst], { type: 'application/step' }), 'application/step');
+  }catch(e){ showToast('STEP-bestand uitpakken is niet gelukt'); }
+}
 function downloadStlModulen(id){
   const b = bestellingById(id);
   if(!b || !b.stlModulenZipBase64){ showToast('Geen losse modules gevonden bij deze bestelling'); return; }
@@ -4225,6 +4235,7 @@ function openBestellingDetail(id){
       <button type="button" class="btn" id="btn-bestelling-offerte">Offerte bekijken (PDF)</button>
       <button type="button" class="btn" id="btn-bestelling-stl" ${b.stlBase64 ? '' : 'disabled'}>STL downloaden</button>
       <button type="button" class="btn" id="btn-bestelling-stl-modulen" ${b.stlModulenZipBase64 ? '' : 'disabled'}>Losse modules (zip)</button>
+      <button type="button" class="btn" id="btn-bestelling-step" ${b.stepGzBase64 ? '' : 'disabled'}>STEP downloaden</button>
       <button type="button" class="btn btn-primary" id="btn-bestelling-import">${b.status === 'geimporteerd' ? 'Naar project' : 'Importeren naar project'}</button>
     </div>
   `);
@@ -4232,6 +4243,7 @@ function openBestellingDetail(id){
   document.getElementById('btn-bestelling-offerte').addEventListener('click', () => bekijkOfferte(id));
   document.getElementById('btn-bestelling-stl').addEventListener('click', () => downloadStl(id));
   document.getElementById('btn-bestelling-stl-modulen').addEventListener('click', () => downloadStlModulen(id));
+  document.getElementById('btn-bestelling-step').addEventListener('click', () => downloadStep(id));
   document.getElementById('btn-bestelling-import').addEventListener('click', () => { closeModal(); importeerBestelling(id); });
 }
 
