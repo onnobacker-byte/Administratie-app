@@ -1450,6 +1450,7 @@ function m1SwatchStyle(m){
 // echte plaatfoto (Baars & Bloemhoff) als textuur op de 3D-kast: elk onderdeel waarvan de kleur gelijk is aan een
 // plaatkleur met foto krijgt die foto, geschaald naar ca. 90 cm per tegel zodat de nerf niet uitgerekt wordt
 const m1TexCache3d = {};
+const m1ModuleInfo = {}; // per modulenaam: type, kleur en deuren, voor de lijst bij de STL-export (wordt bij elke 3D-opbouw ververst)
 function m1ApplyPlateTextures(group){
   if(!group || typeof THREE === 'undefined') return;
   const plates = [];
@@ -4833,6 +4834,13 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
       hitbox.userData = { rowId: row.id, colId: col.id, wallIdx: wallIdxForHitbox, highlightMesh: hoverHighlight };
       cellGroup.add(hitbox);
       cellGroup.userData.moduleName = 'Wand' + String.fromCharCode(65 + (wallIdxForHitbox || 0)) + '-rij' + (ri + 1) + '-kolom' + (ci + 1);
+      {
+        const tl = (TYPES.find(t => t.id === cell.type) || {}).label || cell.type;
+        const ex = [tl];
+        if(cell.type === 'planken' && cell.options) ex.push((Number(cell.options.shelves)||3) + ' planken');
+        if(cell.type === 'laden' && cell.options) ex.push((Number(cell.options.drawers)||3) + ' laden');
+        m1ModuleInfo[cellGroup.userData.moduleName] = { inhoud: ex.join(', '), kleur: mat.name || mat.id, deuren: '' };
+      }
       clickableHitboxes.push(hitbox);
 
       // nis voor de wasbak: geen kast (geen dek/bodem/zijden/achterschot), alleen een spoelbak met kraan ter illustratie
@@ -5071,6 +5079,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         doorLeftX = reverseColOrder ? (baseX + totalWidthCm - ovDoor3d[ci].off - ovDoor3d[ci].w) : (baseX + ovDoor3d[ci].off);
       }
       const doorModuleName = 'Wand' + String.fromCharCode(65 + (wallIdxForHitbox || 0)) + '-rij' + (span.startIdx + 1) + '-kolom' + (ci + 1);
+      if(m1ModuleInfo[doorModuleName]){ m1ModuleInfo[doorModuleName].deuren = doors + (doors === 1 ? ' deur' : ' deuren') + (span.hinge ? ', scharnier ' + span.hinge : '') + (span.handleType === 'push' ? ', push-to-open' : '') + (mat.name ? ', ' + mat.name : ''); }
       for(let d=0; d<doors; d++){
         const dw = doorSpanWidth/doors - 0.3; // 3 mm naad tussen de deuren
         const dx = doorLeftX + (doorSpanWidth/doors)*(d+0.5);
@@ -5286,6 +5295,7 @@ function roundRect(ctx,x,y,w,h,r){
 let clickableHitboxes = [];
 let currentHoverHighlight = null; // de hoverHighlight-mesh (zie buildSingleWallMeshes) die nu zichtbaar staat, of null
 function build3dModel(){
+  Object.keys(m1ModuleInfo).forEach(k => delete m1ModuleInfo[k]);
   while(modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
   clickableHitboxes = [];
   currentHoverHighlight = null; // wordt hierna helemaal opnieuw opgebouwd, dus nooit naar een oude/verwijderde mesh laten verwijzen
@@ -7710,8 +7720,12 @@ function exportCabinetModulesZipBase64(){
     '  Naam: Wand A/B = de wand, rij 1 = onderste rij, kolom 1 = eerste kolom (van links gezien, op de wand).',
     ''
   ];
-  names.forEach(n => { const q = rel(n); lines.push(n + ':  breed ' + r1(q.w) + '  hoog ' + r1(q.h) + '  diep ' + r1(q.d) + '   |   links ' + r1(q.x) + '  onder ' + r1(q.y) + '  achter voorkant ' + r1(q.z)); });
-  // tekening: voorzicht (breedte x hoogte) en bovenaanzicht (breedte x diepte), elk vak als rechthoek met naam
+  names.forEach(n => {
+    const q = rel(n), inf = m1ModuleInfo[n];
+    lines.push(n + ':  breed ' + r1(q.w) + '  hoog ' + r1(q.h) + '  diep ' + r1(q.d) + '   |   links ' + r1(q.x) + '  onder ' + r1(q.y) + '  achter voorkant ' + r1(q.z));
+    if(inf) lines.push('      ' + [inf.inhoud, inf.deuren, 'kleur ' + inf.kleur].filter(Boolean).join(' | '));
+  });
+  lines.push('', 'In de map plaatshouders staat per module een eenvoudig blok met precies de buitenmaat van die module, op de juiste plek.', 'Daar kun je de module uit je bibliotheek voor in de plaats zetten (Vervangen). De bestandsnaam bevat de maat.');  // tekening: voorzicht (breedte x hoogte) en bovenaanzicht (breedte x diepte), elk vak als rechthoek met naam
   const W = G.mx[0]-G.mn[0], H = G.mx[1]-G.mn[1], D = G.mx[2]-G.mn[2];
   const sc = 600 / Math.max(W, H, 1), pad = 30;
   const fw = W*sc, fh = H*sc, dh = D*sc;
@@ -7735,8 +7749,26 @@ function exportCabinetModulesZipBase64(){
   });
   svg += '</svg>';
   const enc = new TextEncoder();
+  // plaatshouder per module: een blok met de buitenmaat (inclusief deur), op de juiste plek, om te vervangen door een bibliotheekmodule
+  const blockTris = b => {
+    const [x0, y0, z0] = b.mn, [x1, y1, z1] = b.mx, P = (x, y, z) => [x, y, z], T = (n, a, bb, cc) => [n[0], n[1], n[2]].concat(a, bb, cc);
+    const q = (n, a, bb, cc, d) => [T(n, a, bb, d), T(n, bb, cc, d)];
+    return [].concat(
+      q([0,0,1], P(x0,y1,z1), P(x0,y0,z1), P(x1,y0,z1), P(x1,y1,z1)).map(t => t), // voor (hoogste z)
+      q([0,0,-1], P(x1,y1,z0), P(x1,y0,z0), P(x0,y0,z0), P(x0,y1,z0)),
+      q([1,0,0], P(x1,y1,z1), P(x1,y0,z1), P(x1,y0,z0), P(x1,y1,z0)),
+      q([-1,0,0], P(x0,y1,z0), P(x0,y0,z0), P(x0,y0,z1), P(x0,y1,z1)),
+      q([0,1,0], P(x0,y1,z0), P(x0,y1,z1), P(x1,y1,z1), P(x1,y1,z0)),
+      q([0,-1,0], P(x0,y0,z1), P(x0,y0,z0), P(x1,y0,z0), P(x1,y0,z1))
+    );
+  };
+  const holders = names.filter(n => n !== 'overig').map(n => {
+    const b = bbox(c.parts[n]), w = r1(b.mx[0]-b.mn[0]), h = r1(b.mx[1]-b.mn[1]), d = r1(b.mx[2]-b.mn[2]);
+    return { name: 'plaatshouders/' + n + '_' + w + 'x' + h + 'x' + d + '.stl', data: new Uint8Array(stlTrianglesToBuffer(blockTris(b))) };
+  });
   const files = [{ name: '00-hele-kast.stl', data: new Uint8Array(stlTrianglesToBuffer(c.all)) }]
     .concat(names.map(n => ({ name: n + '.stl', data: new Uint8Array(stlTrianglesToBuffer(c.parts[n])) })))
+    .concat(holders)
     .concat([{ name: 'opbouw.txt', data: enc.encode(lines.join('\r\n')) }, { name: 'opbouw.svg', data: enc.encode(svg) }]);
   return arrayBufferToBase64(stlMakeZip(files).buffer);
 }
