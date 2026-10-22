@@ -7503,26 +7503,53 @@ function stlCollect(){
         list.push(tri); all.push(tri);
       }
     });
+    // zet de linker-onder-voorhoek van de hele kast op 0,0,0 (alle delen gelijk verschoven, dus onderlinge plek blijft)
+    if(all.length){
+      const mn = [1e9, 1e9, 1e9];
+      all.forEach(t => { for(let v = 0; v < 3; v++) for(let k = 0; k < 3; k++){ const x = t[3 + v*3 + k]; if(x < mn[k]) mn[k] = x; } });
+      all.forEach(t => { for(let v = 0; v < 3; v++) for(let k = 0; k < 3; k++) t[3 + v*3 + k] -= mn[k]; });
+    }
     return { all, parts };
   } finally {
     showRoom = before.showRoom; currentView = before.view;
     build3dModel();
   }
 }
+// PaletteCAD-opstelling (zoals een STL uit PaletteCAD zelf): Z is omhoog, Y is de diepte met de voorkant bij de hoogste Y,
+// X is de breedte. De configurator (three.js) heeft Y omhoog en Z naar voren, dus Y en Z wisselen: dat spiegelt het model,
+// vandaar dat de volgorde van de hoekpunten ook gewisseld wordt (de normaal blijft dan naar buiten wijzen).
+function stlPaletteTri(t){ return [t[0], t[2], t[1], t[3], t[5], t[4], t[9], t[11], t[10], t[6], t[8], t[7]]; }
 function stlTrianglesToBuffer(triangles){
   const buf = new ArrayBuffer(84 + triangles.length*50);
   const dv = new DataView(buf);
   dv.setUint32(80, triangles.length, true);
   let off = 84;
-  triangles.forEach(tri => {
+  triangles.forEach(t0 => {
+    const tri = stlPaletteTri(t0);
     for(let k=0; k<12; k++){ dv.setFloat32(off, tri[k], true); off += 4; }
     dv.setUint16(off, 0, true); off += 2;
   });
   return buf;
 }
+// tekst-STL met 1 solid "PaletteCAD_Object", net als PaletteCAD zelf exporteert
+function stlTrianglesToAscii(triangles){
+  const f = x => String(Number(x.toFixed(4)));
+  const out = ['solid PaletteCAD_Object'];
+  triangles.forEach(t0 => {
+    const t = stlPaletteTri(t0);
+    out.push(' facet normal ' + f(t[0]) + ' ' + f(t[1]) + ' ' + f(t[2]), '  outer loop',
+      '   vertex ' + f(t[3]) + ' ' + f(t[4]) + ' ' + f(t[5]), '   vertex ' + f(t[6]) + ' ' + f(t[7]) + ' ' + f(t[8]), '   vertex ' + f(t[9]) + ' ' + f(t[10]) + ' ' + f(t[11]),
+      '  endloop', ' endfacet');
+  });
+  out.push('endsolid PaletteCAD_Object');
+  return new TextEncoder().encode(out.join('\n') + '\n');
+}
 function exportCabinetSTLBase64(){
   const c = stlCollect();
-  return c ? arrayBufferToBase64(stlTrianglesToBuffer(c.all)) : null;
+  if(!c) return null;
+  const ascii = arrayBufferToBase64(stlTrianglesToAscii(c.all).buffer);
+  // een bestelling mag niet te groot worden voor de database: bij een heel grote kast het compactere binaire formaat
+  return ascii.length < 450000 ? ascii : arrayBufferToBase64(stlTrianglesToBuffer(c.all));
 }
 // kleine zip-schrijver (alleen opslaan, geen compressie): bestanden = [{name, data:Uint8Array}]
 function stlMakeZip(files){
@@ -7568,7 +7595,7 @@ function exportCabinetModulesZipBase64(){
     '',
     'Alle maten zijn in centimeters (dezelfde eenheid als de STL-bestanden).',
     'Totaal: ' + r1(G.mx[0]-G.mn[0]) + ' breed x ' + r1(G.mx[1]-G.mn[1]) + ' hoog x ' + r1(G.mx[2]-G.mn[2]) + ' diep',
-    '00-hele-kast.stl = de complete opstelling, alle onderdelen op de juiste plek (ter controle).',
+    '00-hele-kast.stl = de complete opstelling, alle onderdelen op de juiste plek (ter controle). Z is omhoog, Y is de diepte (voorkant bij de hoogste Y), zoals PaletteCAD zelf.',
     'Elke module staat ook als los STL-bestand, inclusief de deur en handgreep van dat vak.',
     '',
     'Positie van elke module, gemeten vanaf de linker-onder-voorhoek van de hele kast:',
