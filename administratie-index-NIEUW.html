@@ -1314,7 +1314,7 @@ function offerteRegelUitOnderdeel(o){
   return { id: uid(), onderdeelId: o.id, kopje: (o.kopje||'').trim(), omschrijving: o.naam, tekst: bouwOnderdeelTekst(o),
     aantal: onderdeelAantal(o), eenheid: 'stuk', prijs: +b.aanneemsomExcl.toFixed(2) };
 }
-const OFFERTE_AANLEIDINGEN = ['uw aanvraag','het gesprek','uw e-mail','ons telefoongesprek'];
+const OFFERTE_AANLEIDINGEN = ['uw aanvraag','het gesprek','uw e-mail','ons telefoongesprek','uw aanvraag via onze website'];
 const OFFERTE_WERKZAAMHEDEN = ['fabriceren, leveren en plaatsen','fabriceren en leveren','leveren en plaatsen','leveren'];
 
 function offerteTotalen(o){
@@ -1800,10 +1800,10 @@ function attachViewHandlers(){
         btw: state.instellingen.btw,
         status: 'Concept',
         opmaak: 2, // offertetekst per onderdeel, met de prijs direct eronder
-        aanleiding: 'uw aanvraag',
-        werkzaamheden: 'fabriceren, leveren en plaatsen',
-        onderwerp: p.omschrijving || '',
-        prijzenInclBtw: false,
+        aanleiding: p.website ? 'uw aanvraag via onze website' : 'uw aanvraag',
+        werkzaamheden: (p.website && p.website.monteren !== 'ja') ? 'fabriceren en leveren' : 'fabriceren, leveren en plaatsen',
+        onderwerp: p.website ? ('een ' + ((p.website.opstelling || 'kast op maat').split(' - ')[0]).toLowerCase()) : (p.omschrijving || ''),
+        prijzenInclBtw: !!p.website, // via de website: particulier, dus prijzen inclusief btw
         toonTotaal: false,
         betalingscondities: state.instellingen.betalingscondities || '',
         omschrijvingText: '',
@@ -4044,6 +4044,102 @@ async function verwijderBestelling(id){
 // bedrag klaar om te factureren, zonder dat marge/kantoorkosten er dubbel bovenop komen. Het volledige
 // ontwerp per module (met afmetingen en materiaal) staat in de opmerkingen; de ene regel kun je later zelf
 // opsplitsen in losse materialen met echte inkoopprijzen, als je dat precies per project wilt bijhouden.
+/* ---- Website-bestelling -> onderdelen met kant-en-klare offertetekst ----
+   Nieuwere bestellingen uit de configurator sturen een "specificatie" mee: per wand de maten, per module de indeling,
+   het materiaal van romp en deur en hoe de deuren opengaan, plus plint, werkblad en sluitzijden. Daar maken we per
+   wand een onderdeel van; de tekst komt in "extra zinnen" zodat je hem in de begroting nog kunt aanpassen. */
+function websiteMateriaalNaam(mat){
+  if(!mat) return '';
+  const kleur = webKoppeling().kleuren.find(k=> k.id === mat.id);
+  const m = kleur && kleur.materiaalId ? state.materialen.find(x=> x.id === kleur.materiaalId) : null;
+  if(m) return ((m.offerteMetAantal === false && (m.offertetekst||'').trim()) ? m.offertetekst.trim() : m.naam) || mat.naam || '';
+  return mat.naam || '';
+}
+function websiteWandTekst(w){
+  const regels = [];
+  const telTekst = (n, enkel, meer)=> `${fmtAantal(n)} ${n === 1 ? enkel : meer}`;
+  const modules = (w.modules||[]).filter(m=> m.type !== 'leeg');
+  // Materialen-zin: onderdelen met hetzelfde materiaal samen ("kastrompen, deuren en plint ...")
+  const perMat = [];
+  const voegToe = (wat, mat)=>{
+    const naam = websiteMateriaalNaam(mat);
+    if(!naam) return;
+    let rij = perMat.find(r=> r.naam === naam);
+    if(!rij){ rij = {naam, wat: []}; perMat.push(rij); }
+    if(!rij.wat.includes(wat)) rij.wat.push(wat);
+  };
+  modules.filter(m=> m.type !== 'nis').forEach(m=> voegToe('kastrompen', m.matInner));
+  modules.forEach(m=>{ if(m.deuren) voegToe('deuren', m.matDoor); });
+  const onderdelen = w.onderdelen || [];
+  onderdelen.filter(o=> o.kind === 'sluitzijde').forEach(o=> voegToe('sluitzijden', o.mat));
+  onderdelen.filter(o=> o.kind === 'plint').forEach(o=> voegToe('plint', o.mat));
+  onderdelen.filter(o=> o.kind === 'werkblad').forEach(o=> voegToe('werkblad', o.mat));
+  const opsomming = l=> l.length > 1 ? l.slice(0,-1).join(', ') + ' en ' + l[l.length-1] : l[0];
+  if(perMat.length) regels.push('Materialen: ' + perMat.map(r=> `${opsomming(r.wat)} ${r.naam}`).join('; ') + '.');
+  // deuren en hoe ze opengaan
+  const deurModules = modules.filter(m=> m.deuren);
+  const aantalDeuren = deurModules.reduce((t,m)=> t + (m.deuren||0), 0);
+  const push = deurModules.filter(m=> m.push === true).reduce((t,m)=> t + m.deuren, 0);
+  if(aantalDeuren){
+    if(push === aantalDeuren) regels.push(`${telTekst(aantalDeuren, 'deur', 'deuren')}, open door middel van een pushed open systeem.`);
+    else if(push === 0) regels.push(`${telTekst(aantalDeuren, 'deur', 'deuren')}, voorzien van handgrepen.`);
+    else regels.push(`${telTekst(aantalDeuren, 'deur', 'deuren')}: ${fmtAantal(push)} met pushed open systeem, ${fmtAantal(aantalDeuren-push)} met handgreep.`);
+  }
+  // indeling per module, gelijke modules geteld
+  const indeling = [];
+  const tel = (enkel, meer)=>{ const r = indeling.find(x=> x.enkel === enkel); if(r) r.n++; else indeling.push({enkel, meer, n:1}); };
+  modules.forEach(m=>{
+    const ladenTxt = (n, binnen)=> `${n} ${binnen ? 'binnenlade' : 'lade'}${n === 1 ? '' : 'n'}`;
+    if(m.type === 'planken') tel('module met legplanken', 'modules met legplanken');
+    else if(m.type === 'roede') tel('module met vaste roede', 'modules met vaste roede');
+    else if(m.type === 'plank-roede') tel('module met legplank en vaste roede', 'modules met legplank en vaste roede');
+    else if(m.type === 'laden') tel(`module met ${ladenTxt(m.laden||3, m.binnen)}`, `modules met ${ladenTxt(m.laden||3, m.binnen)}`);
+    else if(m.type === 'roede-laden') tel(`module met vaste roede en ${ladenTxt(Math.max(1, m.laden||2), m.binnen)}`, `modules met vaste roede en ${ladenTxt(Math.max(1, m.laden||2), m.binnen)}`);
+    else if(m.type === 'kledinglift'){ const soort = m.lift === 'elektrisch' ? 'elektrische' : 'handmatige'; tel(`module met ${soort} kledinglift`, `modules met ${soort} kledinglift`); }
+    else if(m.type === 'open') tel('open module', 'open modules');
+    else if(m.type === 'tv') tel('open tv-vak (tv niet inbegrepen)', 'open tv-vakken (tv niet inbegrepen)');
+    else if(m.type === 'nis') tel('nis voor de wasbak (wasbak en kraan niet inbegrepen)', 'nissen voor de wasbak (wasbak en kraan niet inbegrepen)');
+  });
+  indeling.forEach(r=> regels.push(alsZin(telTekst(r.n, r.enkel, r.meer))));
+  const led = modules.filter(m=> m.led).length;
+  if(led) regels.push(alsZin(telTekst(led, 'module voorzien van LED-verlichting', 'modules voorzien van LED-verlichting')));
+  const extras = {};
+  modules.forEach(m=> (m.extras||[]).forEach(x=> extras[x] = (extras[x]||0) + 1));
+  Object.entries(extras).forEach(([naam, n])=> regels.push(alsZin(`${naam}${n > 1 ? ` (${n}x)` : ''}`)));
+  const zijden = onderdelen.filter(o=> o.kind === 'sluitzijde');
+  if(zijden.length) regels.push(`Sluitzijde${zijden.length > 1 ? 'n' : ''} ${opsomming(zijden.map(o=> o.zijde))}, ${fmtAantal(Math.round((zijden[0].dikteCm||0)*10))}mm dik.`);
+  onderdelen.filter(o=> o.kind === 'werkblad').forEach(o=> regels.push(`Werkblad ${fmtAantal(Math.round((o.dikteCm||0)*10))}mm dik.`));
+  onderdelen.filter(o=> o.kind === 'plint').forEach(o=> regels.push(`Plint ${fmtAantal(Math.round((o.hoogteCm||0)*10))}mm hoog.`));
+  return regels.join('\n');
+}
+function websiteSpecOnderdelen(b, terugrekenFactor){
+  const spec = b.specificatie;
+  if(!spec || !Array.isArray(spec.wanden) || !spec.wanden.length) return null;
+  const totaal = b.totaalExclBtw || 0;
+  const somWanden = spec.wanden.reduce((t,w)=> t + (w.subtotaal||0), 0);
+  const meerdere = spec.wanden.length > 1;
+  const onderdelen = spec.wanden.map((w, idx)=>{
+    // verschil door afronding bij de laatste wand, zodat het totaal precies klopt met wat de klant zag
+    const bedrag = (w.subtotaal||0) + (idx === spec.wanden.length-1 ? totaal - somWanden : 0);
+    const mm = v=> fmtAantal(Math.round((v||0)*10));
+    return {
+      id: uid(), kopje: meerdere ? (spec.type || b.opstelling || '') : '', naam: meerdere ? (w.label || `Wand ${idx+1}`) : (spec.type || b.opstelling || 'Kast'),
+      aantal: 1, afmetingen: w.afm ? `${mm(w.afm.b)}mm x ${mm(w.afm.h)}mm x ${mm(w.afm.d)}mm` : '', maatAanduiding: 'bxhxd',
+      zinnen: [], vrijeTekst: websiteWandTekst(w),
+      materiaalregels: [{ id: uid(), aantal: 1,
+        omschrijving: `Ontwerp via website (aanneemsom teruggerekend naar ${euro(bedrag)} excl. btw)`,
+        prijs: terugrekenFactor > 0 ? Math.round((bedrag / terugrekenFactor) * 100) / 100 : 0 }],
+      urenregels: []
+    };
+  });
+  if(b.monteren === 'ja' || b.inmeten === 'ja'){
+    const naam = b.monteren === 'ja' ? (b.inmeten === 'ja' ? 'Inmeten, transport en montage' : 'Transport en montage') : 'Inmeten';
+    onderdelen.push({ id: uid(), kopje: '', naam, aantal: 1, afmetingen: '', maatAanduiding: '', zinnen: [], vrijeTekst: '', materiaalregels: [],
+      urenregels: [{ id: uid(), omschrijving: naam + ' (uren nog invullen)', urenVoorbereiding: 0, urenMontage: 0 }] });
+  }
+  return onderdelen;
+}
+
 async function importeerBestelling(id){
   const b = bestellingById(id);
   if(!b) return;
@@ -4066,7 +4162,8 @@ async function importeerBestelling(id){
     const kantoorFactor = 1 + ((state.instellingen.kantoorkosten || 0) / 100);
     const terugrekenFactor = marge * kantoorFactor;
     const teruggerekendeInkoop = terugrekenFactor > 0 ? Math.round(((b.totaalExclBtw || 0) / terugrekenFactor) * 100) / 100 : 0;
-    const onderdelen = [{
+    const specOnderdelen = websiteSpecOnderdelen(b, terugrekenFactor);
+    const onderdelen = specOnderdelen || [{
       id: uid(), naam: b.opstelling || 'Vanaf website', afmetingen: '',
       materiaalregels: [{
         id: uid(), aantal: 1,
@@ -4078,6 +4175,7 @@ async function importeerBestelling(id){
     const project = {
       id: projectId, klantId: klant.id, status: 'Nieuw', startdatum: todayISO(),
       omschrijving: 'Website-bestelling - ' + (b.opstelling || ''),
+      website: { monteren: b.monteren || '', inmeten: b.inmeten || '', opstelling: b.opstelling || '' },
       begroting: {
         onderdelen,
         opmerkingen: (b.ontwerpTekst || '') + '\n\n--- Let op ---\nDe materiaalregel hierboven is automatisch zo berekend dat de aanneemsom (excl. btw) van dit onderdeel precies ' + euro(b.totaalExclBtw) + ' wordt - hetzelfde bedrag dat de klant op de website heeft gezien. Wil je dit opsplitsen in losse materialen met je eigen inkoopprijzen, pas de regel dan hierboven zelf aan (let op: dan verandert het totaalbedrag).'
@@ -4779,7 +4877,8 @@ function toonLoginScherm(fout){
         <div class="lock-error" id="login-error">${fout? esc(fout): ''}</div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Inloggen</button>
       </form>
-      <p style="margin:16px 0 0; font-size:12.5px;"><a href="#" id="toon-registreren" style="color:var(--copper-dark);">Eerste keer? Beheerdersaccount aanmaken</a></p>
+      <p style="margin:12px 0 0; font-size:12.5px;"><a href="#" id="wachtwoord-vergeten" style="color:var(--copper-dark);">Wachtwoord vergeten?</a></p>
+      <p style="margin:8px 0 0; font-size:12.5px;"><a href="#" id="toon-registreren" style="color:var(--copper-dark);">Eerste keer? Beheerdersaccount aanmaken</a></p>
       <form id="registreren-form" style="display:none; margin-top:12px; text-align:left; border-top:1px solid var(--border); padding-top:14px;">
         <div class="field"><label>Je naam</label><input type="text" id="reg-naam" required></div>
         <div class="field"><label>E-mailadres</label><input type="email" id="reg-email" required autocomplete="username"></div>
@@ -4799,10 +4898,29 @@ function toonLoginScherm(fout){
     e.preventDefault();
     const email = document.getElementById('login-email').value.trim();
     const wachtwoord = document.getElementById('login-wachtwoord').value;
+    const foutVak = document.getElementById('login-error');
+    foutVak.style.color = '';
     try{
       await auth.signInWithEmailAndPassword(email, wachtwoord);
     }catch(err){
-      document.getElementById('login-error').textContent = 'Inloggen mislukt: controleer e-mailadres en wachtwoord';
+      foutVak.textContent = loginFoutTekst(err);
+    }
+  });
+
+  // wachtwoord vergeten: Firebase stuurt een e-mail met een link om zelf een nieuw wachtwoord in te stellen
+  document.getElementById('wachtwoord-vergeten').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const foutVak = document.getElementById('login-error');
+    foutVak.style.color = '';
+    if(!email){ foutVak.textContent = 'Vul eerst hierboven je e-mailadres in en klik dan opnieuw op "Wachtwoord vergeten?".'; return; }
+    try{
+      auth.languageCode = 'nl';
+      await auth.sendPasswordResetEmail(email);
+      foutVak.style.color = 'var(--sage)';
+      foutVak.textContent = `Als ${email} een account heeft, is er nu een e-mail gestuurd met een link om een nieuw wachtwoord te maken. Kijk ook in je spam.`;
+    }catch(err){
+      foutVak.textContent = loginFoutTekst(err);
     }
   });
 
@@ -4818,6 +4936,19 @@ function toonLoginScherm(fout){
       document.getElementById('login-error').textContent = 'Aanmaken mislukt: ' + err.message;
     }
   });
+}
+
+// Firebase-foutcodes omzetten naar een begrijpelijke melding op het inlogscherm
+function loginFoutTekst(err){
+  const code = (err && err.code) || '';
+  if(code === 'auth/invalid-email') return 'Dit e-mailadres is niet goed geschreven.';
+  if(code === 'auth/missing-password') return 'Vul je wachtwoord in.';
+  if(code === 'auth/user-disabled') return 'Dit account is uitgeschakeld.';
+  if(code === 'auth/too-many-requests') return 'Te vaak geprobeerd. Wacht een paar minuten, of gebruik "Wachtwoord vergeten?".';
+  if(code === 'auth/network-request-failed') return 'Geen verbinding met internet. Probeer het opnieuw.';
+  if(code === 'auth/user-not-found') return 'Er is geen account met dit e-mailadres.';
+  if(['auth/wrong-password','auth/invalid-credential','auth/invalid-login-credentials'].includes(code)) return 'E-mailadres of wachtwoord klopt niet. Gebruik eventueel "Wachtwoord vergeten?".';
+  return 'Inloggen mislukt' + (code ? ` (${code})` : '') + ': controleer e-mailadres en wachtwoord.';
 }
 
 function toonGeenToegangScherm(){

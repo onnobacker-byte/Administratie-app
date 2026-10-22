@@ -7037,6 +7037,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
   const d = { label: wallLabel, summary: [], modules: [], extra: [], subtotal: 0 };
   const totalW = cols.reduce((s,c)=>s+c.width,0);
   const maxD = Math.max(...cols.map(c=>c.depth));
+  d.afm = { b: totalW, h: lockedTotalHeight, d: maxD }; // in cm, voor de automatische offertetekst in de administratie-app
   d.summary.push('Afmeting kastenrij: ' + quoteNum(totalW) + ' cm breed x ' + quoteNum(lockedTotalHeight) + ' cm hoog (incl. plint en werkblad) x ' + quoteNum(maxD) + ' cm diep');
   if(marginLeftCm || marginRightCm || marginTopCm) d.summary.push('Speling: links ' + quoteNum(marginLeftCm) + ' cm, rechts ' + quoteNum(marginRightCm) + ' cm, boven ' + quoteNum(marginTopCm) + ' cm');
   const islandBoth = (wallCount === 3 && selectedLayout === 'kookeiland' && wallIdx >= 1);
@@ -7062,7 +7063,11 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
       const mod = { title: 'Module ' + n, pos: 'verdieping ' + (ri+1) + ', kastdeel ' + (ci+1),
         size: quoteNum(cw) + ' x ' + quoteNum(rh) + ' x ' + quoteNum(cd) + ' cm',
         indeling: quoteTypeText(cell), matInner: quoteMat(cell.material), matDoor: null,
-        details: [], lines: [], price: pm.total };
+        details: [], lines: [], price: pm.total,
+        // losse gegevens per module, zodat de administratie-app er zelf een offertetekst van kan maken
+        spec: { type: cell.type, planken: Number(cell.options && cell.options.shelves)||0, laden: Number(cell.options && cell.options.drawers)||0,
+          binnen: drawerStyleOf(cell)==='binnen', lift: (cell.options && cell.options.liftMode) || '', matInner: cell.material, matDoor: null,
+          deuren: 0, push: null, led: (cell.led && cell.led.enabled) ? (cell.led.side || 'ja') : '', extras: [] } };
       if(spanInfo && spanInfo.endIdx > spanInfo.startIdx) mod.details.push((spanInfo.endIdx - spanInfo.startIdx + 1) + ' vakken samengevoegd');
       // regels met omschrijving en prijs
       // (de arbeid staat niet apart op de offerte: die zit verwerkt in de kastromp- en indelingsregel)
@@ -7075,6 +7080,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
         const doorW = cw / dSp.doors;
         const nRows = dSp.endIdx - dSp.startIdx + 1;
         mod.matDoor = quoteMat(dSp.material);
+        mod.spec.matDoor = dSp.material; mod.spec.deuren = dSp.doors; mod.spec.push = dSp.handleType === 'push';
         const doorTxt = dSp.doors + ' deur' + (dSp.doors > 1 ? 'en' : '') + (dSp.doors === 1 ? ', scharnier ' + dSp.hinge : '') + (nRows > 1 ? ', over ' + nRows + ' verdiepingen' : '') + ', maat per deur ' + quoteNum(Math.max(0, doorW-2)) + ' x ' + quoteNum(Math.max(0, spanH-3)) + ' cm';
         const openTxt = dSp.handleType === 'push' ? 'push to open (geen handgreep)'
           : 'handgreep, ' + (dSp.handleOrient === 'horiz' ? 'liggend' : 'staand') + (dSp.handleY !== null && dSp.handleY !== undefined ? ', ' + quoteNum(dSp.handleY) + ' cm vanaf boven' : '');
@@ -7085,6 +7091,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
         mod.details.push('Deur: onderdeel van de deur op verdieping ' + (dSp.startIdx+1) + ' (deur over ' + (dSp.endIdx-dSp.startIdx+1) + ' verdiepingen)');
       } else if(cell.type === 'laden' || cell.type === 'roede-laden'){
         mod.details.push('Openen: ' + (hasHandle(cell) ? 'handgreep' : 'push to open (geen handgreep)'));
+        mod.spec.push = !hasHandle(cell);
       }
       if(cell.led && cell.led.enabled){
         const ledTxt = 'LED-verlichting: ' + cell.led.side + ' (' + (cell.led.side === 'beide' ? '2 strips' : '1 strip') + ' van ' + quoteNum(Math.max(4, rh - 3.6 - 4)) + ' cm, incl. voeding)';
@@ -7098,13 +7105,14 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
           const optie = EXTRA_OPTIES.find(o=>o.id===eid);
           if(!optie) return;
           mod.lines.push({ text: 'Extra optie: ' + optie.naam, amount: priceOf(pm.items, 'extra_'+eid) });
+          mod.spec.extras.push(optie.naam);
         });
       }
       d.modules.push(mod);
     }
   }
   // losse onderdelen (met prijs)
-  if(plintHeightMm > 0) d.extra.push({ title: 'Plint', size: (plintHeightMm/10) + ' cm hoog x ' + quoteNum(totalW + (endPanelToFloor() ? 0 : endLeftCm() + endRightCm())) + ' cm lang', material: quoteMat(plintMaterial), details: [], amount: extraOf(items, 'plint') });
+  if(plintHeightMm > 0) d.extra.push({ title: 'Plint', size: (plintHeightMm/10) + ' cm hoog x ' + quoteNum(totalW + (endPanelToFloor() ? 0 : endLeftCm() + endRightCm())) + ' cm lang', material: quoteMat(plintMaterial), details: [], amount: extraOf(items, 'plint'), kind: 'plint', matId: plintMaterial, hoogteCm: plintHeightMm/10 });
   if(islandSecond && (worktop.enabled || endPanels.left.on || endPanels.right.on)){
     d.extra.push({ title: 'Werkblad en sluitzijden', size: '', material: '', details: ['Zie Kookeiland (kant 1) - ze lopen als 1 geheel door over beide kanten (prijs staat daar)'], amount: 0 });
   }
@@ -7112,7 +7120,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
     const wtW = totalW + (worktop.overhangLeftCm||0) + (worktop.overhangRightCm||0) + endLeftCm() + endRightCm();
     const wtD = (islandBoth ? maxD*2 + (worktop.overhangCm||0)*2 : maxD + (worktop.overhangCm||0) + (worktop.overhangBackCm||0));
     const wh = worktopHeights();
-    d.extra.push({ title: 'Werkblad', size: quoteNum(wtW) + ' x ' + quoteNum(wtD) + ' cm (b x d), dikte ' + quoteNum(worktop.thicknessCm) + ' cm', material: quoteMat(worktop.material),
+    d.extra.push({ title: 'Werkblad', size: quoteNum(wtW) + ' x ' + quoteNum(wtD) + ' cm (b x d), dikte ' + quoteNum(worktop.thicknessCm) + ' cm', material: quoteMat(worktop.material), kind: 'werkblad', matId: worktop.material, dikteCm: worktop.thicknessCm,
       details: [ 'Overstek: voor ' + quoteNum(worktop.overhangCm||0) + ', achter ' + quoteNum(worktop.overhangBackCm||0) + ', links ' + quoteNum(worktop.overhangLeftCm||0) + ', rechts ' + quoteNum(worktop.overhangRightCm||0) + ' cm',
                  'Werkhoogte (vloer tot bovenkant blad): ' + quoteNum(wh.work) + ' cm' ]
         .concat(islandBoth ? ['1 doorlopend blad over beide kanten van het kookeiland'] : []),
@@ -7121,7 +7129,7 @@ function quoteWallData(wallLabel, wallIdx, wallCount, items, itemsOther){
   [['links', endPanels.left, 'endL', 'endR'], ['rechts', endPanels.right, 'endR', 'endL']].forEach(([side, ep, key, keyOther]) => {
     if(!ep || !ep.on || islandSecond) return;
     const hh = rows.reduce((s,r)=>s+r.height,0) + endPanelBelowCm();
-    d.extra.push({ title: 'Sluitzijde ' + side, size: quoteNum(ep.thicknessCm) + ' cm dik x ' + quoteNum(hh) + ' cm hoog x ' + quoteNum(partDepth) + ' cm diep', material: quoteMat(endPanelMatId()),
+    d.extra.push({ title: 'Sluitzijde ' + side, size: quoteNum(ep.thicknessCm) + ' cm dik x ' + quoteNum(hh) + ' cm hoog x ' + quoteNum(partDepth) + ' cm diep', material: quoteMat(endPanelMatId()), kind: 'sluitzijde', zijde: side, matId: endPanelMatId(), dikteCm: ep.thicknessCm,
       details: [ endPanelToFloor() ? 'Tot op de grond' : 'Stopt bij de plint' ].concat(islandBoth ? ['1 doorlopend paneel over beide kanten'] : []),
       // kant 2 staat gedraaid: zijn links is de wereld-rechterkant
       amount: extraOf(items, key) + (islandBoth && itemsOther ? extraOf(itemsOther, keyOther) : 0) });
@@ -7502,6 +7510,19 @@ function buildOfferteSnapshotHtml(){
   return '<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offerte Module1 - ' + esc2(customerInfo.naam || '') + '</title><style>' + styles + '\nbody{background:#dedbd0;margin:0;padding:0;} .qs{max-width:900px;margin:20px auto;}</style></head><body><div class="qs">' + sheetHtml + '</div></body></html>';
 }
 function esc2(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Gestructureerde specificatie per wand voor de administratie-app (materialen per onderdeel, indeling, deuren),
+// zodat daar automatisch een offerte-omschrijving van gemaakt kan worden. Materialen gaan mee als id + naam.
+function buildOrderSpec(data){
+  const mat = id => id ? { id: id, naam: quoteMat(id) } : null;
+  return {
+    type: data.type,
+    wanden: data.walls.map(w => ({
+      label: w.label, subtotaal: Math.round((w.subtotal||0)*100)/100, afm: w.afm || null,
+      modules: w.modules.map(m => Object.assign({}, m.spec, { matInner: mat(m.spec.matInner), matDoor: mat(m.spec.matDoor) })),
+      onderdelen: w.extra.filter(e => e.kind).map(e => ({ kind: e.kind, mat: mat(e.matId), zijde: e.zijde || '', dikteCm: e.dikteCm || 0, hoogteCm: e.hoogteCm || 0 }))
+    }))
+  };
+}
 function buildOrderPayload(){
   const data = buildQuoteData();
   const totalNow = calculatePrice();
@@ -7513,6 +7534,7 @@ function buildOrderPayload(){
     inmeten: wantsMeasurement === true ? 'ja' : (wantsMeasurement === false ? 'nee' : 'nog geen keuze'),
     monteren: wantsInstallation === true ? 'ja' : (wantsInstallation === false ? 'nee' : 'nog geen keuze'),
     ontwerpTekst: buildQuoteDesignText(),
+    specificatie: buildOrderSpec(data),
     totaalExclBtw: round2(totalNow), btwPct: btwPct, totaalInclBtw: round2(totalNow*(1+btwPct/100)),
     offerteHtml: buildOfferteSnapshotHtml(), // de complete offerte (met plaatje) als kant-en-klare pagina om in de administratie-app als PDF te bekijken/bewaren
     stlBase64: exportCabinetSTLBase64() || '',
