@@ -3970,7 +3970,7 @@ function attachWebprijzenHandlers(main){
 // Een bestelling komt rechtstreeks van de website (collectie 'bestellingen', publiek aan te maken maar
 // alleen door de beheerder te lezen/wijzigen). Elke bestelling bevat de klantgegevens, het volledige
 // ontwerp als tekst, een kant-en-klare offerte-PDF-pagina (offerteHtml, exact wat de klant zag) en een
-// STL-bestand van de hele kast (stlBase64, in mm) voor productie/CNC.
+// STL-bestand van de hele kast (stlBase64; de getallen zijn cm, zoals PaletteCAD ze leest) + een zip met een los STL per module (stlModulenZipBase64).
 let bestellingZoek = '';
 function bestellingById(id){ return state.bestellingen.find(b => b.id === id); }
 const BESTELLING_STATUS_MAP = { nieuw:'badge-amber', bekeken:'badge-amber', geimporteerd:'badge-sage', afgewezen:'badge-rust' };
@@ -4032,6 +4032,11 @@ function downloadStl(id){
   const b = bestellingById(id);
   if(!b || !b.stlBase64){ showToast('Geen STL-bestand gevonden bij deze bestelling'); return; }
   downloadBestand(`Bestelling-${id}.stl`, base64ToBlob(b.stlBase64, 'model/stl'), 'model/stl');
+}
+function downloadStlModulen(id){
+  const b = bestellingById(id);
+  if(!b || !b.stlModulenZipBase64){ showToast('Geen losse modules gevonden bij deze bestelling'); return; }
+  downloadBestand(`Bestelling-${id}-modules.zip`, base64ToBlob(b.stlModulenZipBase64, 'application/zip'), 'application/zip');
 }
 async function verwijderBestelling(id){
   if(!confirm('Deze bestelling verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
@@ -4219,12 +4224,14 @@ function openBestellingDetail(id){
       <button type="button" class="btn" id="modal-cancel">Sluiten</button>
       <button type="button" class="btn" id="btn-bestelling-offerte">Offerte bekijken (PDF)</button>
       <button type="button" class="btn" id="btn-bestelling-stl" ${b.stlBase64 ? '' : 'disabled'}>STL downloaden</button>
+      <button type="button" class="btn" id="btn-bestelling-stl-modulen" ${b.stlModulenZipBase64 ? '' : 'disabled'}>Losse modules (zip)</button>
       <button type="button" class="btn btn-primary" id="btn-bestelling-import">${b.status === 'geimporteerd' ? 'Naar project' : 'Importeren naar project'}</button>
     </div>
   `);
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
   document.getElementById('btn-bestelling-offerte').addEventListener('click', () => bekijkOfferte(id));
   document.getElementById('btn-bestelling-stl').addEventListener('click', () => downloadStl(id));
+  document.getElementById('btn-bestelling-stl-modulen').addEventListener('click', () => downloadStlModulen(id));
   document.getElementById('btn-bestelling-import').addEventListener('click', () => { closeModal(); importeerBestelling(id); });
 }
 
