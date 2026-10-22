@@ -4824,6 +4824,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
           new THREE.MeshBasicMaterial({color:0xb08655, transparent:true, opacity:0.28, depthWrite:false})
         );
         selHighlight.position.set(cx, cy, 0);
+        selHighlight.userData.noExport = true;
         cellGroup.add(selHighlight);
         const selEdges = new THREE.LineSegments(new THREE.EdgesGeometry(selHighlight.geometry), new THREE.LineBasicMaterial({color:0xb08655}));
         selEdges.position.copy(selHighlight.position);
@@ -4831,6 +4832,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
       }
       hitbox.userData = { rowId: row.id, colId: col.id, wallIdx: wallIdxForHitbox, highlightMesh: hoverHighlight };
       cellGroup.add(hitbox);
+      cellGroup.userData.moduleName = 'Wand' + String.fromCharCode(65 + (wallIdxForHitbox || 0)) + '-rij' + (ri + 1) + '-kolom' + (ci + 1);
       clickableHitboxes.push(hitbox);
 
       // nis voor de wasbak: geen kast (geen dek/bodem/zijden/achterschot), alleen een spoelbak met kraan ter illustratie
@@ -5068,6 +5070,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         doorSpanWidth = ovDoor3d[ci].w;
         doorLeftX = reverseColOrder ? (baseX + totalWidthCm - ovDoor3d[ci].off - ovDoor3d[ci].w) : (baseX + ovDoor3d[ci].off);
       }
+      const doorModuleName = 'Wand' + String.fromCharCode(65 + (wallIdxForHitbox || 0)) + '-rij' + (span.startIdx + 1) + '-kolom' + (ci + 1);
       for(let d=0; d<doors; d++){
         const dw = doorSpanWidth/doors - 0.3; // 3 mm naad tussen de deuren
         const dx = doorLeftX + (doorSpanWidth/doors)*(d+0.5);
@@ -5078,6 +5081,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
         const door = new THREE.Mesh(new THREE.BoxGeometry(dw, spanH-0.3, 1.8), doorMat);
         door.material.color.multiplyScalar(0.9);
         door.position.set(dx, centerY, frontZ+0.9);
+        door.userData.moduleName = doorModuleName; // voor de STL-export: deur hoort bij het vak waar hij begint
         group.add(door);
         const doorEdges = new THREE.LineSegments(new THREE.EdgesGeometry(door.geometry), new THREE.LineBasicMaterial({color:0x151513, transparent:true, opacity: ledPreviewActive ? 0.25 : 0.6}));
         doorEdges.position.copy(door.position);
@@ -5098,6 +5102,7 @@ function buildSingleWallMeshes(group, includeRoom, edgeSkip, wallIdxParam, workt
             ? (horizHandle ? centerY + spanH/2 - 5 : centerY)
             : Math.max(centerY-spanH/2+5, Math.min(centerY+spanH/2-5, centerY + spanH/2 - span.handleY));
           handle.position.set(horizHandle ? dx : handleX, handleWorldY, frontZ+2.4);
+          handle.userData.moduleName = doorModuleName;
           group.add(handle);
         }
       }
@@ -7461,9 +7466,12 @@ function arrayBufferToBase64(buf){
   for(let i=0; i<bytes.length; i+=chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
   return btoa(binary);
 }
-// bouwt 1 binair STL-bestand (in mm, 1 cm in de configurator = 10 mm) van de HELE kastopstelling (alle
-// wanden samen, zonder vloer/wanden/plafond van de Ruimte) - elke driehoek van elke mesh wordt overgenomen.
-function exportCabinetSTLBase64(){
+// STL-export van de HELE kastopstelling (alle wanden samen, zonder vloer/wanden/plafond van de Ruimte).
+// Eenheid: de getallen zijn centimeters (1 cm in de configurator = 1 eenheid), want zo leest PaletteCAD een STL in.
+// Onzichtbare hulpvlakken (aanklik-hitbox, hover-gloed) gaan er niet in. Elk vak (module) wordt een eigen deel,
+// zodat het in PaletteCAD los vervangen kan worden; eindpanelen, plint, werkblad enz. vormen samen deel "overig".
+const STL_UNIT_SCALE = 1;
+function stlCollect(){
   if(typeof THREE === 'undefined' || !modelGroup) return null;
   const before = { showRoom, view: currentView };
   try{
@@ -7472,37 +7480,85 @@ function exportCabinetSTLBase64(){
     // de 3D-weergave draait het model mee met de muis: voor de export altijd onverdraaid (voorkant naar voren)
     modelGroup.rotation.set(0, 0, 0);
     modelGroup.updateMatrixWorld(true);
-    const SCALE = 10; // cm -> mm
     const tmpV = new THREE.Vector3();
-    const triangles = [];
-    const getVert = (pos, mat, i) => { tmpV.set(pos.getX(i), pos.getY(i), pos.getZ(i)); tmpV.applyMatrix4(mat); return [tmpV.x*SCALE, tmpV.y*SCALE, tmpV.z*SCALE]; };
+    const getVert = (pos, mat, i) => { tmpV.set(pos.getX(i), pos.getY(i), pos.getZ(i)); tmpV.applyMatrix4(mat); return [tmpV.x*STL_UNIT_SCALE, tmpV.y*STL_UNIT_SCALE, tmpV.z*STL_UNIT_SCALE]; };
+    const parts = {}, all = [];
     modelGroup.traverse(obj => {
       if(!obj.isMesh || !obj.geometry || !obj.geometry.attributes || !obj.geometry.attributes.position) return;
       if(obj.userData && obj.userData.noExport) return; // bijv. de tv in een tv-vak: geen onderdeel van de kast
+      if(obj.material && (Array.isArray(obj.material) ? obj.material.every(m => m.visible === false) : obj.material.visible === false)) return; // hitbox
+      for(let o = obj; o; o = o.parent) if(o.visible === false) return; // hover-gloed e.d.
+      let name = 'overig';
+      for(let o = obj; o; o = o.parent) if(o.userData && o.userData.moduleName){ name = o.userData.moduleName; break; }
       const geo = obj.geometry, pos = geo.attributes.position, idx = geo.index, mat = obj.matrixWorld;
       const count = idx ? idx.count : pos.count;
+      const list = parts[name] || (parts[name] = []);
       for(let i=0; i<count; i+=3){
         const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i+1) : i+1, ic = idx ? idx.getX(i+2) : i+2;
         const a = getVert(pos, mat, ia), b = getVert(pos, mat, ib), c = getVert(pos, mat, ic);
         const ab = new THREE.Vector3(b[0]-a[0], b[1]-a[1], b[2]-a[2]);
         const ac = new THREE.Vector3(c[0]-a[0], c[1]-a[1], c[2]-a[2]);
         const n = new THREE.Vector3().crossVectors(ab, ac).normalize();
-        triangles.push([n.x, n.y, n.z].concat(a, b, c));
+        const tri = [n.x, n.y, n.z].concat(a, b, c);
+        list.push(tri); all.push(tri);
       }
     });
-    const buf = new ArrayBuffer(84 + triangles.length*50);
-    const dv = new DataView(buf);
-    dv.setUint32(80, triangles.length, true);
-    let off = 84;
-    triangles.forEach(tri => {
-      for(let k=0; k<12; k++){ dv.setFloat32(off, tri[k], true); off += 4; }
-      dv.setUint16(off, 0, true); off += 2;
-    });
-    return arrayBufferToBase64(buf);
+    return { all, parts };
   } finally {
     showRoom = before.showRoom; currentView = before.view;
     build3dModel();
   }
+}
+function stlTrianglesToBuffer(triangles){
+  const buf = new ArrayBuffer(84 + triangles.length*50);
+  const dv = new DataView(buf);
+  dv.setUint32(80, triangles.length, true);
+  let off = 84;
+  triangles.forEach(tri => {
+    for(let k=0; k<12; k++){ dv.setFloat32(off, tri[k], true); off += 4; }
+    dv.setUint16(off, 0, true); off += 2;
+  });
+  return buf;
+}
+function exportCabinetSTLBase64(){
+  const c = stlCollect();
+  return c ? arrayBufferToBase64(stlTrianglesToBuffer(c.all)) : null;
+}
+// kleine zip-schrijver (alleen opslaan, geen compressie): bestanden = [{name, data:Uint8Array}]
+function stlMakeZip(files){
+  const crcTable = []; for(let n=0; n<256; n++){ let c = n; for(let k=0; k<8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); crcTable[n] = c >>> 0; }
+  const crc32 = d => { let c = 0xFFFFFFFF; for(let i=0; i<d.length; i++) c = crcTable[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const enc = new TextEncoder(), chunks = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true);
+    lh.setUint16(26, nm.length, true); lh.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(lh.buffer), nm, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+    ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true);
+    ch.setUint16(28, nm.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nm);
+    offset += 30 + nm.length + sz;
+  });
+  let cdSize = 0; central.forEach(c => cdSize += c.length);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  const all = chunks.concat(central, [new Uint8Array(end.buffer)]);
+  let total = 0; all.forEach(c => total += c.length);
+  const out = new Uint8Array(total); let o = 0; all.forEach(c => { out.set(c, o); o += c.length; });
+  return out;
+}
+// zip met een apart STL-bestand per module (+ "overig"), als base64
+function exportCabinetModulesZipBase64(){
+  const c = stlCollect();
+  if(!c) return null;
+  const files = Object.keys(c.parts).sort().map(name => ({ name: name + '.stl', data: new Uint8Array(stlTrianglesToBuffer(c.parts[name])) }));
+  return files.length ? arrayBufferToBase64(stlMakeZip(files).buffer) : null;
 }
 // Zelfstandige HTML-pagina van de offerte, exact zoals de klant 'm ziet (zelfde stijl/plaatje) - dit is
 // wat er in de administratie-app als "de PDF" van de bestelling geopend/afgedrukt kan worden.
@@ -7540,6 +7596,7 @@ function buildOrderPayload(){
     totaalExclBtw: round2(totalNow), btwPct: btwPct, totaalInclBtw: round2(totalNow*(1+btwPct/100)),
     offerteHtml: buildOfferteSnapshotHtml(), // de complete offerte (met plaatje) als kant-en-klare pagina om in de administratie-app als PDF te bekijken/bewaren
     stlBase64: exportCabinetSTLBase64() || '',
+    stlModulenZipBase64: exportCabinetModulesZipBase64() || '', // per module een los STL-bestand, in een zip
     status: 'nieuw',
     aangemaaktOp: new Date().toISOString()
   };
